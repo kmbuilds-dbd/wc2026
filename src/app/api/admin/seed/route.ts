@@ -13,10 +13,11 @@ import { NextResponse, type NextRequest } from "next/server";
 import { requirePrivileged, UnauthenticatedError } from "@/lib/auth";
 import { seedTeams } from "@/lib/seed/teams";
 import { seedFixtures } from "@/lib/seed/fixtures";
+import { seedTeamsFromSnapshot } from "@/lib/seed/teams-from-snapshot";
 import { ApiSportsError } from "@/lib/api-sports/client";
 
-type What = "teams" | "fixtures" | "all";
-const VALID: What[] = ["teams", "fixtures", "all"];
+type What = "teams" | "fixtures" | "all" | "teams-snapshot";
+const VALID: What[] = ["teams", "fixtures", "all", "teams-snapshot"];
 
 export async function POST(request: NextRequest) {
   try {
@@ -38,6 +39,10 @@ export async function POST(request: NextRequest) {
 
   try {
     const out: Record<string, unknown> = { ok: true, what };
+    if (what === "teams-snapshot") {
+      out.teamsFromSnapshot = await seedTeamsFromSnapshot();
+      return NextResponse.json(out);
+    }
     if (what === "teams" || what === "all") {
       out.teams = await seedTeams();
     }
