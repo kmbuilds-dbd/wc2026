@@ -1,0 +1,52 @@
+@import "tailwindcss";
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * Design tokens ported from the wc2026_worker squad tracker.
+ * Source: worker.js lines ~308–367 in the prior project.
+ * ──────────────────────────────────────────────────────────────────────── */
+@theme {
+  --color-bg: #080810;
+  --color-surface: #0f0f1a;
+  --color-surface-2: #16162a;
+  --color-border-base: rgba(255, 255, 255, 0.07);
+  --color-accent: #f7c325;
+  --color-text: #e8e8f0;
+  --color-text-muted: #666678;
+  --color-text-dim: #2a2a40;
+
+  /* Status / category palette */
+  --color-confirmed: #3ecf8e;
+  --color-preliminary: #4a9eff;
+  --color-pending: #f7c325;
+  --color-danger: #e84545;
+
+  /* Font families exposed by next/font/google via the <html> className */
+  --font-display: var(--font-display-raw), "Bebas Neue", sans-serif;
+  --font-sans: var(--font-sans-raw), "DM Sans", system-ui, sans-serif;
+  --font-mono: var(--font-mono-raw), "DM Mono", ui-monospace, monospace;
+}
+
+html,
+body {
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+}
+
+/* Pulsing live dot, ported from the tracker */
+@keyframes wc-live-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+.wc-live-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-confirmed);
+  animation: wc-live-pulse 2s infinite;
+}

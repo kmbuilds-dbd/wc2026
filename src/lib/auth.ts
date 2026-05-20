@@ -1,0 +1,93 @@
+/**
+ * Cloudflare Access auth helper.
+ *
+ * In production, CF Access sits in front of the worker. After PIN auth, every
+ * request to the origin includes:
+ *   - cf-access-authenticated-user-email
+ *   - cf-access-jwt-assertion (we trust the platform's header for now;
+ *     verifying the JWT against the issuer's JWKS is a defense-in-depth
+ *     upgrade we'll add post-launch)
+ *
+ * In local dev (next dev), CF Access is not in front, so we accept a
+ * `x-dev-user-email` header or fall back to the ADMIN_EMAIL env var.
+ */
+import { headers } from "next/headers";
+import { getCloudflareContext } from "@opennextjs/cloudflare";
+import { eq } from "drizzle-orm";
+import { getDb } from "@/db/client";
+import { users, type User } from "@/db/schema";
+
+export class UnauthenticatedError extends Error {
+  constructor() {
+    super("Not authenticated");
+    this.name = "UnauthenticatedError";
+  }
+}
+
+/**
+ * Read the authenticated user's email from request headers.
+ * Returns null in dev if no fallback is configured.
+ */
+export async function getUserEmail(): Promise<string | null> {
+  const h = await headers();
+  const accessEmail = h.get("cf-access-authenticated-user-email");
+  if (accessEmail) return accessEmail.toLowerCase();
+
+  // Dev fallback
+  const devEmail = h.get("x-dev-user-email");
+  if (devEmail) return devEmail.toLowerCase();
+
+  const { env } = await getCloudflareContext({ async: true });
+  if (env.NEXTJS_ENV === "development" && env.ADMIN_EMAIL) {
+    return env.ADMIN_EMAIL.toLowerCase();
+  }
+
+  return null;
+}
+
+/**
+ * Get the current user record, lazy-creating it on first hit.
+ * Throws UnauthenticatedError if no email header is present.
+ */
+export async function requireUser(): Promise<User> {
+  const email = await getUserEmail();
+  if (!email) throw new UnauthenticatedError();
+
+  const db = await getDb();
+  const existing = await db
+    .select()
+    .from(users)
+    .where(eq(users.email, email))
+    .get();
+  if (existing) return existing;
+
+  const { env } = await getCloudflareContext({ async: true });
+  const isAdmin = env.ADMIN_EMAIL?.toLowerCase() === email;
+
+  const displayName = email.split("@")[0] ?? email;
+  const now = Math.floor(Date.now() / 1000);
+
+  const created = await db
+    .insert(users)
+    .values({
+      email,
+      displayName,
+      avatarEmoji: null,
+      isAdmin,
+      createdAt: now,
+    })
+    .returning()
+    .get();
+
+  return created;
+}
+
+/**
+ * Hard-gate: only allow if the request is from the configured admin email.
+ * Use in /api/admin/* route handlers and admin-only server actions.
+ */
+export async function requireAdmin(): Promise<User> {
+  const user = await requireUser();
+  if (!user.isAdmin) throw new UnauthenticatedError();
+  return user;
+}
