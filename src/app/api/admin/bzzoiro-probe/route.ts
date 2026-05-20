@@ -90,34 +90,45 @@ export async function POST(request: NextRequest) {
     });
   }
 
-  // Step 3: fetch a small slice of events for the resolved league + season
+  // Step 3: fetch ALL events for the resolved league + season — first probe
+  // showed only 26 events total (WC has 104) and 2 of them are bracket-slot
+  // placeholders. Need to see the full distribution to decide if bzzoiro is
+  // viable, or if we bail to api-sports Pro / a manual-entry hybrid.
   if (leagueId !== null && seasonId !== null) {
     try {
-      const events = await bzGet<unknown>("/events/", {
-        league: String(leagueId),
-        season: String(seasonId),
-        limit: 2,
-      });
+      const all = await fetchAllEvents(String(leagueId), String(seasonId));
       steps.push({
-        step: `events?league=${leagueId}&season=${seasonId}&limit=2`,
-        url: `/events/?league=${leagueId}&season=${seasonId}&limit=2`,
+        step: `events?league=${leagueId}&season=${seasonId} (all pages)`,
+        url: `/events/?league=${leagueId}&season=${seasonId}&limit=200`,
         ok: true,
-        summary: summarizeList(events, [
-          "id",
-          "home_team",
-          "away_team",
-          "home_score",
-          "away_score",
-          "event_date",
-          "status",
-        ]),
-        raw: events, // first 2 full events — gives us full field set for typing
+        summary: {
+          total_events: all.length,
+          by_round_number: groupBy(all, (e) => String(e?.round_number ?? "?")),
+          by_round_name: groupBy(all, (e) => String(e?.round_name ?? "")),
+          by_group_name: groupBy(all, (e) => String(e?.group_name ?? "(none)")),
+          by_status: groupBy(all, (e) => String(e?.status ?? "?")),
+          // Sample 5 events with team names so we can tell placeholders from reals.
+          sample_team_names: all.slice(0, 5).map((e) => ({
+            id: e?.id,
+            round: e?.round_number,
+            home: e?.home_team,
+            away: e?.away_team,
+            date: e?.event_date,
+          })),
+          distinct_team_names: Array.from(
+            new Set(
+              all.flatMap((e) => [String(e?.home_team ?? ""), String(e?.away_team ?? "")]),
+            ),
+          )
+            .filter(Boolean)
+            .sort(),
+        },
       });
     } catch (e) {
       pushError(
         steps,
-        "events",
-        `/events/?league=${leagueId}&season=${seasonId}&limit=2`,
+        "events (all pages)",
+        `/events/?league=${leagueId}&season=${seasonId}&limit=200`,
         e,
       );
     }
@@ -138,6 +149,43 @@ export async function POST(request: NextRequest) {
 }
 
 // ─── helpers ────────────────────────────────────────────────────────────
+
+/**
+ * Walks bzzoiro's offset-style pagination for /events (uses ?limit/?offset
+ * per their docs). Returns plain row objects.
+ */
+async function fetchAllEvents(
+  leagueId: string,
+  seasonId: string,
+): Promise<Record<string, unknown>[]> {
+  const out: Record<string, unknown>[] = [];
+  const limit = 200;
+  for (let offset = 0, safety = 0; safety < 20; safety++, offset += limit) {
+    const body = await bzGet<unknown>("/events/", {
+      league: leagueId,
+      season: seasonId,
+      limit,
+      offset,
+    });
+    const rows = asArray(body) as Record<string, unknown>[];
+    out.push(...rows);
+    const next =
+      body && typeof body === "object" && "next" in body
+        ? (body as { next: unknown }).next
+        : null;
+    if (!next || !rows.length) break;
+  }
+  return out;
+}
+
+function groupBy<T>(arr: T[], keyFn: (t: T) => string): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const item of arr) {
+    const k = keyFn(item);
+    out[k] = (out[k] ?? 0) + 1;
+  }
+  return out;
+}
 
 /** Walks bzzoiro's page-style pagination for /leagues until no `next` link. */
 async function fetchAllLeagues(): Promise<unknown[]> {
