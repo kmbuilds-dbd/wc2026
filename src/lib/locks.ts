@@ -1,22 +1,17 @@
 /**
- * Pick-lock model.
+ * Pick-lock policy. Single source of truth — every write path MUST call
+ * `isLocked(category, round?)` before mutating.
  *
- * Tournament-level picks (groups, wildcards, KO bracket, top scorer, golden
- * glove, winner) lock at the kickoff of the first WC match.
+ * Lock points:
+ *   - Tournament-level picks (group/wildcard/bracket/tournament) → first
+ *     kickoff of the entire tournament
+ *   - Per-round lineup picks → first kickoff of that KO round
  *
- * Per-round lineup picks open after the previous round's last match ends and
- * lock at the first kickoff of that round.
- *
- * Single source of truth — every write path (server actions, route handlers)
- * MUST call `isLocked(category, round?)` before mutating.
+ * Source of timestamps:
+ *   1. D1 `matches` table (after `seedFixtures()` has run)
+ *   2. Fallback constants below for the empty-DB case so dev UI still works
  */
-
-// Jun 11, 2026 20:00 UTC — South Korea vs Czech Republic kickoff, the
-// scheduled opener per teams.json `fg` strings. Verified at impl time
-// against api-sports `/fixtures?league=1&season=2026&first=1`.
-// TODO: replace with a query against `matches.kickoff_utc WHERE stage='group'
-// ORDER BY kickoff_utc ASC LIMIT 1` once fixtures are seeded.
-export const FIRST_KICKOFF_UTC = 1749672000;
+import { getStageKickoffs } from "@/lib/seed/fixtures";
 
 export type PickCategory =
   | "group"
@@ -28,36 +23,59 @@ export type PickCategory =
 export type LineupRound = "r32" | "r16" | "qf" | "sf" | "final";
 
 /**
- * Returns true if the given category (and round, for lineups) is locked
- * for the current request.
+ * Approximate FIFA WC 2026 kickoffs. Used as a fallback when the matches
+ * table is empty (pre-seed). Replaced by D1-derived values as soon as
+ * `seedFixtures()` populates the table.
+ *
+ * First match: Jun 11 2026 20:00 UTC (group stage opener)
+ * R32 starts: Jun 28 · R16: Jul 4 · QF: Jul 9 · SF: Jul 14 · F: Jul 19
  */
-export function isLocked(
-  category: PickCategory,
-  round?: LineupRound,
-): boolean {
-  const nowSec = Math.floor(Date.now() / 1000);
-  if (category === "lineup") {
-    if (!round) {
-      throw new Error("round is required for category=lineup");
-    }
-    return nowSec >= roundFirstKickoffUtc(round);
-  }
-  return nowSec >= FIRST_KICKOFF_UTC;
+export const FALLBACK_KICKOFFS = {
+  firstMatchUtc: 1749672000,
+  r32: 1751155200,
+  r16: 1751673600,
+  qf: 1752105600,
+  sf: 1752537600,
+  final: 1752969600,
+} as const;
+
+/** Backwards-compatible export for the dashboard countdown. */
+export const FIRST_KICKOFF_UTC = FALLBACK_KICKOFFS.firstMatchUtc;
+
+export interface Kickoffs {
+  firstMatchUtc: number;
+  r32: number;
+  r16: number;
+  qf: number;
+  sf: number;
+  final: number;
 }
 
 /**
- * Placeholder per-round first-kickoff schedule. Replace at impl time with a
- * D1 query: `SELECT MIN(kickoff_utc) FROM matches WHERE stage = ?`.
+ * Resolve kickoff timestamps, preferring D1 values when available.
+ * Falls back to FALLBACK_KICKOFFS for any stage that hasn't been seeded.
  */
-export function roundFirstKickoffUtc(round: LineupRound): number {
-  // Approximate FIFA WC2026 schedule based on the bracket template.
-  // Group stage ends Jun 27 → R32 starts Jun 28 → R16 Jul 4 → QF Jul 9 → SF Jul 14 → Final Jul 19.
-  const schedule: Record<LineupRound, number> = {
-    r32: 1751155200, // Jun 28 2026 20:00 UTC (approx)
-    r16: 1751673600, // Jul 4 2026 20:00 UTC (approx)
-    qf: 1752105600, // Jul 9 2026 20:00 UTC (approx)
-    sf: 1752537600, // Jul 14 2026 20:00 UTC (approx)
-    final: 1752969600, // Jul 19 2026 20:00 UTC (approx)
+export async function getKickoffs(): Promise<Kickoffs> {
+  const fromDb = await getStageKickoffs();
+  return {
+    firstMatchUtc: fromDb.group ?? FALLBACK_KICKOFFS.firstMatchUtc,
+    r32: fromDb.r32 ?? FALLBACK_KICKOFFS.r32,
+    r16: fromDb.r16 ?? FALLBACK_KICKOFFS.r16,
+    qf: fromDb.qf ?? FALLBACK_KICKOFFS.qf,
+    sf: fromDb.sf ?? FALLBACK_KICKOFFS.sf,
+    final: fromDb.final ?? FALLBACK_KICKOFFS.final,
   };
-  return schedule[round];
+}
+
+export async function isLocked(
+  category: PickCategory,
+  round?: LineupRound,
+): Promise<boolean> {
+  const k = await getKickoffs();
+  const nowSec = Math.floor(Date.now() / 1000);
+  if (category === "lineup") {
+    if (!round) throw new Error("round is required for category=lineup");
+    return nowSec >= k[round];
+  }
+  return nowSec >= k.firstMatchUtc;
 }
