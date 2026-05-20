@@ -24,17 +24,15 @@
 	"observability": {
 		"enabled": true
 	},
-
 	// ── App data ───────────────────────────────────────────────────────────
-	// Replace `database_id` with the id printed by `wrangler d1 create wc2026`
 	"d1_databases": [
 		{
 			"binding": "DB",
 			"database_name": "wc2026",
-			"database_id": "REPLACE_WITH_D1_ID"
+			"database_id": "7023cfdd-62ad-442c-9745-4c93350dfb4e",
+			"migrations_dir": "src/db/migrations"
 		}
 	],
-
 	// Repurpose existing namespace from wc2026_worker tracker.
 	// To use a fresh one: `wrangler kv namespace create wc2026-cache`
 	"kv_namespaces": [
@@ -43,7 +41,6 @@
 			"id": "1c46e4b823d540ffa7cef3d1cf7ffaef"
 		}
 	],
-
 	// ── Scheduled jobs ─────────────────────────────────────────────────────
 	"triggers": {
 		"crons": [
@@ -52,7 +49,6 @@
 			"0 9 * * *"
 		]
 	},
-
 	// ── Public, non-secret env vars ─────────────────────────────────────────
 	// Secrets (api keys) are set via `wrangler secret put NAME`
 	"vars": {
