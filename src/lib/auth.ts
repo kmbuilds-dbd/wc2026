@@ -91,3 +91,24 @@ export async function requireAdmin(): Promise<User> {
   if (!user.isAdmin) throw new UnauthenticatedError();
   return user;
 }
+
+/**
+ * Privileged-internal gate. Allows either:
+ *   (a) the configured admin (via CF Access email header or dev fallback), or
+ *   (b) a request carrying `x-cron-secret: <CRON_SECRET>` (the same secret
+ *       used to authenticate cron-trigger self-fetches).
+ *
+ * Use this for routes that should be callable BOTH by an interactive admin
+ * AND by automated/CLI flows that pre-date CF Access being in front (e.g.
+ * the initial /api/admin/seed run, or curl from a CI script). After CF
+ * Access is in place, rotating CRON_SECRET removes the bypass.
+ */
+export async function requirePrivileged(request: Request): Promise<"admin" | "cron"> {
+  const cronSecret = request.headers.get("x-cron-secret");
+  const { env } = await getCloudflareContext({ async: true });
+  const expected = (env as unknown as { CRON_SECRET?: string }).CRON_SECRET;
+  if (expected && cronSecret === expected) return "cron";
+
+  await requireAdmin(); // throws UnauthenticatedError if not admin
+  return "admin";
+}

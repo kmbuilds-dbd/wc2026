@@ -1,17 +1,16 @@
 /**
  * POST /api/admin/seed?what=teams|fixtures|all
  *
- * Admin-only. Triggers idempotent seeding from api-sports.io.
+ * Privileged. Triggers idempotent seeding from api-sports.io.
  *
  * Order matters: fixtures depend on teams (for group_letter lookup), so
  * `what=all` runs teams then fixtures.
  *
- * Usage:
- *   curl -X POST 'https://wc2026.<sub>.workers.dev/api/admin/seed?what=all' \
- *     -H 'x-dev-user-email: <admin>'   # dev only — prod uses CF Access header
+ * Auth: CF Access admin email OR `x-cron-secret: <CRON_SECRET>` header
+ * (bootstrap escape hatch — see requirePrivileged()).
  */
 import { NextResponse, type NextRequest } from "next/server";
-import { requireAdmin, UnauthenticatedError } from "@/lib/auth";
+import { requirePrivileged, UnauthenticatedError } from "@/lib/auth";
 import { seedTeams } from "@/lib/seed/teams";
 import { seedFixtures } from "@/lib/seed/fixtures";
 import { ApiSportsError } from "@/lib/api-sports/client";
@@ -21,7 +20,7 @@ const VALID: What[] = ["teams", "fixtures", "all"];
 
 export async function POST(request: NextRequest) {
   try {
-    await requireAdmin();
+    await requirePrivileged(request);
   } catch (e) {
     if (e instanceof UnauthenticatedError) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
