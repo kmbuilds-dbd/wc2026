@@ -1,12 +1,13 @@
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { PageHeader } from "@/components/page-header";
 import { LockBanner } from "@/components/lock-banner";
 import { GroupsSection } from "@/components/picks/groups-section";
 import { ComingSoon } from "@/components/coming-soon";
 import { requireUser } from "@/lib/auth";
 import { getDb } from "@/db/client";
-import { groupPicks } from "@/db/schema";
+import { groupPicks, teams } from "@/db/schema";
 import { isLocked } from "@/lib/locks";
+import { seedTeamsFromSnapshot } from "@/lib/seed/teams-from-snapshot";
 
 export const metadata = {
   title: "Your picks — WC2026 pick'em",
@@ -15,6 +16,18 @@ export const metadata = {
 export default async function PicksPage() {
   const user = await requireUser();
   const db = await getDb();
+
+  // Bootstrap: if the teams table is empty (no api-football seed yet,
+  // see progress.md → "Data provider deferred"), auto-seed from the
+  // bundled tracker snapshot so picks have valid FK targets. Idempotent;
+  // runs at most once per app lifetime.
+  const teamCount = await db
+    .select({ n: sql<number>`count(*)` })
+    .from(teams)
+    .get();
+  if ((teamCount?.n ?? 0) === 0) {
+    await seedTeamsFromSnapshot();
+  }
 
   // Load existing group picks for this user, indexed by 'A:1' / 'A:2' etc.
   const existingGroups = await db

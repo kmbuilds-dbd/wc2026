@@ -26,21 +26,27 @@ export class UnauthenticatedError extends Error {
 
 /**
  * Read the authenticated user's email from request headers.
- * Returns null in dev if no fallback is configured.
+ *
+ * Resolution order:
+ *   1. CF Access header (the real production auth, once Zero Trust is set up)
+ *   2. Dev-only `x-dev-user-email` (for impersonation during local testing)
+ *   3. Open-admin fallback: ADMIN_EMAIL env var (anyone visiting is treated
+ *      as admin). **This is open by default until CF Access is set up in
+ *      front of the worker.** Acceptable for pre-launch testing; not for
+ *      sharing the URL with the 50-user group.
+ *
+ * Returns null only if ADMIN_EMAIL is also unset.
  */
 export async function getUserEmail(): Promise<string | null> {
   const h = await headers();
   const accessEmail = h.get("cf-access-authenticated-user-email");
   if (accessEmail) return accessEmail.toLowerCase();
 
-  // Dev fallback
   const devEmail = h.get("x-dev-user-email");
   if (devEmail) return devEmail.toLowerCase();
 
   const { env } = await getCloudflareContext({ async: true });
-  if (env.NEXTJS_ENV === "development" && env.ADMIN_EMAIL) {
-    return env.ADMIN_EMAIL.toLowerCase();
-  }
+  if (env.ADMIN_EMAIL) return env.ADMIN_EMAIL.toLowerCase();
 
   return null;
 }
