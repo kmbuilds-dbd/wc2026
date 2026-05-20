@@ -27,16 +27,22 @@ export type LineupRound = "r32" | "r16" | "qf" | "sf" | "final";
  * table is empty (pre-seed). Replaced by D1-derived values as soon as
  * `seedFixtures()` populates the table.
  *
- * First match: Jun 11 2026 20:00 UTC (group stage opener)
- * R32 starts: Jun 28 · R16: Jul 4 · QF: Jul 9 · SF: Jul 14 · F: Jul 19
+ * Using Date.UTC() rather than hardcoded integers so the dates are obvious
+ * at a glance and we can't silently introduce off-by-year mistakes.
+ * (`Date.UTC(2026, 5, 11, 20)` = Jun 11 2026 20:00 UTC — month is 0-indexed.)
  */
+function utc(year: number, month1: number, day: number, hour = 20): number {
+  // month1 is 1-indexed here so calls read naturally (utc(2026, 6, 11) = Jun 11).
+  return Math.floor(Date.UTC(year, month1 - 1, day, hour, 0, 0) / 1000);
+}
+
 export const FALLBACK_KICKOFFS = {
-  firstMatchUtc: 1749672000,
-  r32: 1751155200,
-  r16: 1751673600,
-  qf: 1752105600,
-  sf: 1752537600,
-  final: 1752969600,
+  firstMatchUtc: utc(2026, 6, 11), // Group stage opener
+  r32: utc(2026, 6, 28),
+  r16: utc(2026, 7, 4),
+  qf: utc(2026, 7, 9),
+  sf: utc(2026, 7, 14),
+  final: utc(2026, 7, 19),
 } as const;
 
 /** Backwards-compatible export for the dashboard countdown. */
