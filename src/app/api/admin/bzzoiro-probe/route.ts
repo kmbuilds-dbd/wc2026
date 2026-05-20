@@ -36,20 +36,33 @@ export async function POST(request: NextRequest) {
 
   const steps: ProbeStep[] = [];
 
-  // Step 1: find the FIFA World Cup league
+  // Step 1: enumerate ALL leagues across all pages, find any FIFA / World Cup entry.
   let leagueId: number | string | null = null;
+  let allLeagues: unknown[] = [];
   try {
-    const leagues = await bzGet<unknown>("/leagues/", { search: "World Cup" });
-    steps.push({
-      step: "leagues?search=World Cup",
-      url: "/leagues/?search=World%20Cup",
-      ok: true,
-      summary: summarizeList(leagues, ["id", "name", "country", "country_code"]),
-      raw: truncateList(leagues, 5),
+    allLeagues = await fetchAllLeagues();
+    const wcCandidates = allLeagues.filter((r) => {
+      const name = String((r as Record<string, unknown>)?.name ?? "").toLowerCase();
+      return /world cup|fifa|mundial/.test(name);
     });
-    leagueId = pickLikelyWorldCupLeague(leagues);
+    steps.push({
+      step: "leagues (all pages)",
+      url: "/leagues/?page=1.. (paginated)",
+      ok: true,
+      summary: {
+        total_leagues: allLeagues.length,
+        all_league_names: allLeagues
+          .map((r) => (r as Record<string, unknown>)?.name)
+          .filter(Boolean),
+        wc_candidate_count: wcCandidates.length,
+        wc_candidates: wcCandidates.map((r) =>
+          pickFields(r, ["id", "name", "country", "is_women", "current_season"]),
+        ),
+      },
+    });
+    leagueId = pickLikelyWorldCupLeague(wcCandidates);
   } catch (e) {
-    pushError(steps, "leagues?search=World Cup", "/leagues/?search=World%20Cup", e);
+    pushError(steps, "leagues (all pages)", "/leagues/?page=1..", e);
   }
 
   // Step 2: list seasons for that league
@@ -125,6 +138,25 @@ export async function POST(request: NextRequest) {
 }
 
 // ─── helpers ────────────────────────────────────────────────────────────
+
+/** Walks bzzoiro's page-style pagination for /leagues until no `next` link. */
+async function fetchAllLeagues(): Promise<unknown[]> {
+  const out: unknown[] = [];
+  let page = 1;
+  for (let safety = 0; safety < 20; safety++, page++) {
+    const body = await bzGet<unknown>("/leagues/", { page });
+    const rows = asArray(body);
+    out.push(...rows);
+    // Bzzoiro uses { count, next, previous, results } envelopes per their docs.
+    const next =
+      body && typeof body === "object" && "next" in body
+        ? (body as { next: unknown }).next
+        : null;
+    if (!next || !rows.length) break;
+  }
+  return out;
+}
+
 
 function pushError(steps: ProbeStep[], step: string, url: string, e: unknown) {
   if (e instanceof BzzoiroError) {
