@@ -89,18 +89,50 @@ export async function requireUser(): Promise<User> {
 }
 
 /**
- * Hard-gate: only allow if the request is from the configured admin email.
- * Use in /api/admin/* route handlers and admin-only server actions.
+ * Hard-gate: real CF Access header that matches the admin email. Open-admin
+ * fallback DOES NOT apply here — `requireUser` allows it for page reads in
+ * pre-launch testing, but admin mutations stay locked even before CF Access
+ * is in front.
+ *
+ * Returns the admin user record. Throws UnauthenticatedError otherwise.
  */
 export async function requireAdmin(): Promise<User> {
-  const user = await requireUser();
-  if (!user.isAdmin) throw new UnauthenticatedError();
-  return user;
+  const h = await headers();
+  const accessEmail = h.get("cf-access-authenticated-user-email");
+  const devEmail = h.get("x-dev-user-email");
+  const explicitEmail = (accessEmail ?? devEmail)?.toLowerCase();
+  if (!explicitEmail) throw new UnauthenticatedError();
+
+  const { env } = await getCloudflareContext({ async: true });
+  const adminEmail = env.ADMIN_EMAIL?.toLowerCase();
+  if (!adminEmail || explicitEmail !== adminEmail) throw new UnauthenticatedError();
+
+  const db = await getDb();
+  const existing = await db
+    .select()
+    .from(users)
+    .where(eq(users.email, explicitEmail))
+    .get();
+  if (existing) return existing;
+
+  // Lazy-create the admin row if it doesn't exist yet (matches requireUser).
+  const now = Math.floor(Date.now() / 1000);
+  return db
+    .insert(users)
+    .values({
+      email: explicitEmail,
+      displayName: explicitEmail.split("@")[0] ?? explicitEmail,
+      avatarEmoji: null,
+      isAdmin: true,
+      createdAt: now,
+    })
+    .returning()
+    .get();
 }
 
 /**
  * Privileged-internal gate. Allows either:
- *   (a) the configured admin (via CF Access email header or dev fallback), or
+ *   (a) the configured admin (via real CF Access email header), or
  *   (b) a request carrying `x-cron-secret: <CRON_SECRET>` (the same secret
  *       used to authenticate cron-trigger self-fetches).
  *
@@ -108,6 +140,9 @@ export async function requireAdmin(): Promise<User> {
  * AND by automated/CLI flows that pre-date CF Access being in front (e.g.
  * the initial /api/admin/seed run, or curl from a CI script). After CF
  * Access is in place, rotating CRON_SECRET removes the bypass.
+ *
+ * Open-admin fallback (no header, no secret) is REJECTED here — that mode
+ * is for page reads only, not for mutations.
  */
 export async function requirePrivileged(request: Request): Promise<"admin" | "cron"> {
   const cronSecret = request.headers.get("x-cron-secret");
@@ -115,6 +150,6 @@ export async function requirePrivileged(request: Request): Promise<"admin" | "cr
   const expected = (env as unknown as { CRON_SECRET?: string }).CRON_SECRET;
   if (expected && cronSecret === expected) return "cron";
 
-  await requireAdmin(); // throws UnauthenticatedError if not admin
+  await requireAdmin(); // throws UnauthenticatedError if no admin auth header
   return "admin";
 }
