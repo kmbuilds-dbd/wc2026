@@ -78,6 +78,7 @@ export default async function LeaderboardPage() {
                 <th className="text-right px-4 py-2.5">Wildcard</th>
                 <th className="text-right px-4 py-2.5">Bracket</th>
                 <th className="text-right px-4 py-2.5">Tournament</th>
+                <th className="text-right px-4 py-2.5">Lineup</th>
                 <th className="text-right px-4 py-2.5 text-accent">Total</th>
               </tr>
             </thead>
@@ -107,6 +108,9 @@ export default async function LeaderboardPage() {
                     </td>
                     <td className="px-4 py-2.5 text-right font-mono text-text-muted">
                       {breakdown.tournament ?? 0}
+                    </td>
+                    <td className="px-4 py-2.5 text-right font-mono text-text-muted">
+                      {breakdown.lineup ?? 0}
                     </td>
                     <td className="px-4 py-2.5 text-right font-display text-xl text-accent">
                       {row.points}

@@ -8,11 +8,13 @@
  */
 import { RULES } from "./rules";
 import { BRACKET_SLOTS, type BracketRound } from "@/lib/bracket-shape";
+import type { LineupRound } from "@/lib/locks";
 import type {
   GroupPick,
   WildcardPick,
   BracketPick,
   TournamentPick,
+  LineupPick,
   Match,
   User,
 } from "@/db/schema";
@@ -367,6 +369,116 @@ function scoreTournament(
   return rows;
 }
 
+// ─── Lineup scoring ─────────────────────────────────────────────────────
+
+const LINEUP_ROUNDS: LineupRound[] = ["r32", "r16", "qf", "sf", "final"];
+
+interface PlayerStatLookup {
+  /** player_id → team_id */
+  playerTeam: Map<number, number>;
+  /** player_id → position */
+  playerPosition: Map<number, "GK" | "DEF" | "MID" | "FWD">;
+}
+
+/**
+ * For a given round's finished matches, tally per-player goals + assists
+ * and per-team clean sheets. Result is round-scoped — knockout-stage scoring
+ * doesn't bleed into other rounds even if the player appears in both.
+ */
+function tallyRoundStats(roundMatches: Match[]): {
+  goalsByPlayer: Map<number, number>;
+  assistsByPlayer: Map<number, number>;
+  cleanSheetsByTeam: Map<number, number>;
+} {
+  const goalsByPlayer = new Map<number, number>();
+  const assistsByPlayer = new Map<number, number>();
+  const cleanSheetsByTeam = new Map<number, number>();
+
+  for (const m of roundMatches) {
+    if (m.status !== "finished") continue;
+    if (m.homeScore == null || m.awayScore == null) continue;
+
+    // Clean sheets — credit the team that conceded zero.
+    if (m.awayScore === 0 && m.homeTeamId != null) {
+      cleanSheetsByTeam.set(
+        m.homeTeamId,
+        (cleanSheetsByTeam.get(m.homeTeamId) ?? 0) + 1,
+      );
+    }
+    if (m.homeScore === 0 && m.awayTeamId != null) {
+      cleanSheetsByTeam.set(
+        m.awayTeamId,
+        (cleanSheetsByTeam.get(m.awayTeamId) ?? 0) + 1,
+      );
+    }
+
+    const events = (m.rawEvents as MatchEvent[] | null) ?? [];
+    for (const ev of events) {
+      if (ev.type === "goal") {
+        goalsByPlayer.set(ev.playerId, (goalsByPlayer.get(ev.playerId) ?? 0) + 1);
+      } else if (ev.type === "assist") {
+        assistsByPlayer.set(
+          ev.playerId,
+          (assistsByPlayer.get(ev.playerId) ?? 0) + 1,
+        );
+      }
+      // own_goal: ignore for player-scoring (doesn't credit the scorer)
+    }
+  }
+
+  return { goalsByPlayer, assistsByPlayer, cleanSheetsByTeam };
+}
+
+function scoreLineups(
+  user: User,
+  picks: LineupPick[],
+  matchesByRound: Record<LineupRound, Match[]>,
+  lookup: PlayerStatLookup,
+  now: number,
+): ScoreRow[] {
+  const userPicks = picks.filter((p) => p.userEmail === user.email);
+  if (userPicks.length === 0) return [];
+
+  const rows: ScoreRow[] = [];
+  for (const round of LINEUP_ROUNDS) {
+    const roundPicks = userPicks.filter((p) => p.round === round);
+    if (roundPicks.length === 0) continue;
+
+    const { goalsByPlayer, assistsByPlayer, cleanSheetsByTeam } = tallyRoundStats(
+      matchesByRound[round] ?? [],
+    );
+
+    for (const pick of roundPicks) {
+      let pts = 0;
+      const goals = goalsByPlayer.get(pick.playerId) ?? 0;
+      const assists = assistsByPlayer.get(pick.playerId) ?? 0;
+      pts += goals * RULES.LINEUP_GOAL;
+      pts += assists * RULES.LINEUP_ASSIST;
+
+      if (pick.position === "GK" || pick.position === "DEF") {
+        const teamId = lookup.playerTeam.get(pick.playerId);
+        if (teamId != null) {
+          const cs = cleanSheetsByTeam.get(teamId) ?? 0;
+          pts +=
+            cs *
+            (pick.position === "GK"
+              ? RULES.LINEUP_CLEAN_SHEET_GK
+              : RULES.LINEUP_CLEAN_SHEET_DEF);
+        }
+      }
+
+      rows.push({
+        userEmail: user.email,
+        category: "lineup",
+        key: `lineup:${round}:${pick.position}`,
+        points: pts,
+        computedAt: now,
+      });
+    }
+  }
+  return rows;
+}
+
 // ─── Top-level ──────────────────────────────────────────────────────────
 
 export interface ComputeInput {
@@ -376,8 +488,11 @@ export interface ComputeInput {
   wildcardPicks: WildcardPick[];
   bracketPicks: BracketPick[];
   tournamentPicks: TournamentPick[];
-  /** player_id → team_id, needed only for golden glove resolution. */
+  lineupPicks: LineupPick[];
+  /** player_id → team_id, needed for golden glove + lineup clean-sheet credit. */
   playerTeamById: Map<number, number>;
+  /** player_id → position, needed for lineup validation only (not strictly required here). */
+  playerPositionById: Map<number, "GK" | "DEF" | "MID" | "FWD">;
 }
 
 /**
@@ -392,6 +507,21 @@ export function computeAllScores(input: ComputeInput): ScoreRow[] {
     input.tournamentPicks.map((p) => [p.userEmail, p]),
   );
 
+  // Pre-bucket matches by round for lineup scoring.
+  const matchesByRound: Record<LineupRound, Match[]> = {
+    r32: [], r16: [], qf: [], sf: [], final: [],
+  };
+  for (const m of input.matches) {
+    if (m.stage in matchesByRound) {
+      matchesByRound[m.stage as LineupRound].push(m);
+    }
+  }
+
+  const playerStatLookup = {
+    playerTeam: input.playerTeamById,
+    playerPosition: input.playerPositionById,
+  };
+
   const out: ScoreRow[] = [];
   for (const u of input.users) {
     out.push(...scoreGroups(u, input.groupPicks, actual, now));
@@ -405,6 +535,9 @@ export function computeAllScores(input: ComputeInput): ScoreRow[] {
         input.playerTeamById,
         now,
       ),
+    );
+    out.push(
+      ...scoreLineups(u, input.lineupPicks, matchesByRound, playerStatLookup, now),
     );
   }
   return out;

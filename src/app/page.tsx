@@ -44,7 +44,11 @@ export default async function DashboardPage() {
           label="Your locked roster"
           desc="Visible to others after each category locks."
         />
-        <Card href="/picks/lineup/r32" label="Round-of-32 lineup" desc="Opens after group stage ends." />
+        <Card
+          href="/picks/lineup/r32"
+          label="Lineup picks"
+          desc="1 GK · 1 DEF · 1 MID · 1 FWD per KO round (R32 → Final). Pool: teams still alive."
+        />
       </div>
 
       <div className="mt-10 rounded border border-border-base bg-surface p-5 font-mono text-[11px] text-text-muted leading-relaxed">

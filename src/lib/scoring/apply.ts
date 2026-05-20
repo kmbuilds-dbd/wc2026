@@ -14,6 +14,7 @@ import {
   wildcardPicks,
   bracketPicks,
   tournamentPicks,
+  lineupPicks,
   scores,
 } from "@/db/schema";
 import { computeAllScores } from "./compute";
@@ -31,10 +32,14 @@ export async function recomputeAllUsers(): Promise<RecomputeResult> {
   const start = Date.now();
   const db = await getDb();
 
-  // Build player → team map from the static snapshot (cheap; we don't need
-  // a DB call for this).
+  // Build player → team + position maps from the static snapshot (cheap;
+  // we don't need a DB call for this).
   const playerTeamById = new Map<number, number>();
-  for (const p of playerById.values()) playerTeamById.set(p.id, p.teamId);
+  const playerPositionById = new Map<number, "GK" | "DEF" | "MID" | "FWD">();
+  for (const p of playerById.values()) {
+    playerTeamById.set(p.id, p.teamId);
+    playerPositionById.set(p.id, p.position);
+  }
 
   const [
     userRows,
@@ -43,6 +48,7 @@ export async function recomputeAllUsers(): Promise<RecomputeResult> {
     wildcardRows,
     bracketRows,
     tournamentRows,
+    lineupRows,
   ] = await Promise.all([
     db.select().from(users),
     db.select().from(matches),
@@ -50,6 +56,7 @@ export async function recomputeAllUsers(): Promise<RecomputeResult> {
     db.select().from(wildcardPicks),
     db.select().from(bracketPicks),
     db.select().from(tournamentPicks),
+    db.select().from(lineupPicks),
   ]);
 
   const rows = computeAllScores({
@@ -59,7 +66,9 @@ export async function recomputeAllUsers(): Promise<RecomputeResult> {
     wildcardPicks: wildcardRows,
     bracketPicks: bracketRows,
     tournamentPicks: tournamentRows,
+    lineupPicks: lineupRows,
     playerTeamById,
+    playerPositionById,
   });
 
   // Replace: nuke + bulk insert. SQLite/D1 doesn't support multi-statement

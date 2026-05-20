@@ -21,11 +21,15 @@ import {
   wildcardPicks,
   bracketPicks,
   tournamentPicks,
+  lineupPicks,
+  matches,
 } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
-import { isLocked } from "@/lib/locks";
+import { isLocked, type LineupRound } from "@/lib/locks";
 import { groupLetters, teamById } from "@/lib/teams-data";
+import { playerById } from "@/lib/players-data";
 import { BRACKET_SLOTS, isValidSlot } from "@/lib/bracket-shape";
+import { computeAliveTeamsFromMatches } from "@/lib/scoring/alive";
 
 export type ActionResult =
   | { ok: true; saved: number }
@@ -180,6 +184,75 @@ export async function saveBracketPicks(formData: FormData): Promise<ActionResult
   }
 
   revalidatePath("/picks");
+  return { ok: true, saved: rows.length };
+}
+
+// ─── Lineup picks (per KO round: 1 GK + 1 DEF + 1 MID + 1 FWD) ──────────
+
+const LINEUP_POSITIONS = ["GK", "DEF", "MID", "FWD"] as const;
+type LineupPosition = (typeof LINEUP_POSITIONS)[number];
+
+export async function saveLineupPicks(
+  round: LineupRound,
+  formData: FormData,
+): Promise<ActionResult> {
+  const user = await requireUser();
+  if (await isLocked("lineup", round)) {
+    return { ok: false, error: `${round.toUpperCase()} lineup is locked.` };
+  }
+
+  // Determine alive teams from current match data — picks must be from
+  // players whose team is still in the tournament for this round.
+  const db = await getDb();
+  const matchRows = await db.select().from(matches);
+  const aliveTeams = computeAliveTeamsFromMatches(round, matchRows);
+
+  const now = Math.floor(Date.now() / 1000);
+  const rows: Array<{
+    userEmail: string;
+    round: LineupRound;
+    position: LineupPosition;
+    playerId: number;
+    updatedAt: number;
+  }> = [];
+
+  for (const pos of LINEUP_POSITIONS) {
+    const raw = formData.get(`lineup_${pos}`);
+    if (raw === null || raw === "" || raw === undefined) continue;
+    const playerId = Number(raw);
+    if (!Number.isInteger(playerId)) {
+      return { ok: false, error: `Invalid player id for ${pos}.` };
+    }
+    const player = playerById.get(playerId);
+    if (!player) {
+      return { ok: false, error: `Unknown player for ${pos}.` };
+    }
+    if (player.position !== pos) {
+      return {
+        ok: false,
+        error: `${player.name} is ${player.position}, not ${pos}.`,
+      };
+    }
+    if (!aliveTeams.has(player.teamId)) {
+      return {
+        ok: false,
+        error: `${player.teamName} is no longer alive in ${round.toUpperCase()}.`,
+      };
+    }
+    rows.push({ userEmail: user.email, round, position: pos, playerId, updatedAt: now });
+  }
+
+  for (const r of rows) {
+    await db
+      .insert(lineupPicks)
+      .values(r)
+      .onConflictDoUpdate({
+        target: [lineupPicks.userEmail, lineupPicks.round, lineupPicks.position],
+        set: { playerId: r.playerId, updatedAt: r.updatedAt },
+      });
+  }
+
+  revalidatePath(`/picks/lineup/${round}`);
   return { ok: true, saved: rows.length };
 }
 
