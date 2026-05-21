@@ -76,9 +76,34 @@ export default async function PicksPage() {
 
       <LockBanner scope="tournament" />
 
+      {/* In-page TOC — jump between the four sections on long scroll. */}
+      <nav className="flex flex-wrap gap-2 mb-8 font-mono text-[10px] uppercase tracking-[0.08em]">
+        {[
+          { href: "#groups", label: `Groups (${existingGroups.length}/24)` },
+          { href: "#wildcards", label: `Wildcards (${existingWildcards.length}/8)` },
+          { href: "#bracket", label: `Bracket (${existingBracket.length}/31)` },
+          {
+            href: "#tournament",
+            label: `Tournament (${existingTournament ? Object.values(tournamentInitial).filter(Boolean).length : 0}/3)`,
+          },
+        ].map((l) => (
+          <a
+            key={l.href}
+            href={l.href}
+            className="px-3 py-1.5 rounded-sm border border-border-base bg-surface text-text-muted hover:bg-accent/10 hover:text-accent hover:border-accent/30"
+          >
+            {l.label}
+          </a>
+        ))}
+      </nav>
+
+      <div id="groups" />
       <GroupsSection initial={groupInitial} locked={locked} />
+      <div id="wildcards" />
       <WildcardsSection initial={wildcardInitial} locked={locked} />
+      <div id="bracket" />
       <BracketSection initial={bracketInitial} locked={locked} />
+      <div id="tournament" />
       <TournamentSection initial={tournamentInitial} locked={locked} />
     </>
   );

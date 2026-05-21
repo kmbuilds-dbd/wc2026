@@ -38,19 +38,16 @@ export default function RootLayout({
       className={`${bebas.variable} ${dmSans.variable} ${dmMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col bg-bg text-text">
-        <header className="border-b border-border-base px-5 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
+        <header className="border-b border-border-base px-5 py-4 flex flex-wrap items-center justify-between gap-3">
+          <a href="/" className="flex items-center gap-3 no-underline">
             <span className="font-display text-2xl tracking-wide">
               WC<span className="text-accent">2026</span>
             </span>
             <span className="hidden sm:inline-block font-mono text-[10px] uppercase tracking-[0.2em] text-text-muted">
               Pick&apos;em
             </span>
-          </div>
-          <nav className="font-mono text-[11px] uppercase tracking-[0.12em] flex gap-4 text-text-muted">
-            <a href="/" className="hover:text-accent">
-              Dashboard
-            </a>
+          </a>
+          <nav className="font-mono text-[11px] uppercase tracking-[0.12em] flex flex-wrap gap-4 text-text-muted">
             <a href="/picks" className="hover:text-accent">
               Picks
             </a>

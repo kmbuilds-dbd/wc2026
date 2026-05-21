@@ -74,11 +74,11 @@ export default async function LeaderboardPage() {
               <tr className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-muted border-b border-border-base">
                 <th className="text-left px-4 py-2.5 w-8">#</th>
                 <th className="text-left px-4 py-2.5">Player</th>
-                <th className="text-right px-4 py-2.5">Group</th>
-                <th className="text-right px-4 py-2.5">Wildcard</th>
-                <th className="text-right px-4 py-2.5">Bracket</th>
-                <th className="text-right px-4 py-2.5">Tournament</th>
-                <th className="text-right px-4 py-2.5">Lineup</th>
+                <th className="hidden md:table-cell text-right px-4 py-2.5">Group</th>
+                <th className="hidden md:table-cell text-right px-4 py-2.5">Wildcard</th>
+                <th className="hidden md:table-cell text-right px-4 py-2.5">Bracket</th>
+                <th className="hidden lg:table-cell text-right px-4 py-2.5">Tournament</th>
+                <th className="hidden lg:table-cell text-right px-4 py-2.5">Lineup</th>
                 <th className="text-right px-4 py-2.5 text-accent">Total</th>
               </tr>
             </thead>
@@ -102,19 +102,19 @@ export default async function LeaderboardPage() {
                         <div className="font-mono text-[10px] text-text-dim">{row.userEmail}</div>
                       </a>
                     </td>
-                    <td className="px-4 py-2.5 text-right font-mono text-text-muted">
+                    <td className="hidden md:table-cell px-4 py-2.5 text-right font-mono text-text-muted">
                       {breakdown.group ?? 0}
                     </td>
-                    <td className="px-4 py-2.5 text-right font-mono text-text-muted">
+                    <td className="hidden md:table-cell px-4 py-2.5 text-right font-mono text-text-muted">
                       {breakdown.wildcard ?? 0}
                     </td>
-                    <td className="px-4 py-2.5 text-right font-mono text-text-muted">
+                    <td className="hidden md:table-cell px-4 py-2.5 text-right font-mono text-text-muted">
                       {breakdown.bracket ?? 0}
                     </td>
-                    <td className="px-4 py-2.5 text-right font-mono text-text-muted">
+                    <td className="hidden lg:table-cell px-4 py-2.5 text-right font-mono text-text-muted">
                       {breakdown.tournament ?? 0}
                     </td>
-                    <td className="px-4 py-2.5 text-right font-mono text-text-muted">
+                    <td className="hidden lg:table-cell px-4 py-2.5 text-right font-mono text-text-muted">
                       {breakdown.lineup ?? 0}
                     </td>
                     <td className="px-4 py-2.5 text-right font-display text-xl text-accent">
