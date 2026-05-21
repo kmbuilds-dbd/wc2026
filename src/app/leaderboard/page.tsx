@@ -94,8 +94,13 @@ export default async function LeaderboardPage() {
                       {i === 0 ? <span className="text-accent">{i + 1}</span> : i + 1}
                     </td>
                     <td className="px-4 py-2.5">
-                      <div className="font-display text-base text-text">{row.displayName}</div>
-                      <div className="font-mono text-[10px] text-text-dim">{row.userEmail}</div>
+                      <a
+                        href={`/users/${encodeURIComponent(row.userEmail)}`}
+                        className="block hover:text-accent"
+                      >
+                        <div className="font-display text-base text-text">{row.displayName}</div>
+                        <div className="font-mono text-[10px] text-text-dim">{row.userEmail}</div>
+                      </a>
                     </td>
                     <td className="px-4 py-2.5 text-right font-mono text-text-muted">
                       {breakdown.group ?? 0}
