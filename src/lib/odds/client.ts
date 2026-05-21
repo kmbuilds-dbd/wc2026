@@ -62,19 +62,48 @@ async function call<T>(path: string, params: Record<string, string> = {}): Promi
   return (await res.json()) as T;
 }
 
+/** Sport descriptor from /v4/sports. */
+export interface OddsApiSport {
+  key: string;
+  group: string;
+  title: string;
+  description: string;
+  active: boolean;
+  has_outrights: boolean;
+}
+
 /**
- * Returns all outright/event markets for WC 2026.
+ * List all sports + outright "sports" that The Odds API knows about.
  *
- * Markets we care about identify themselves via event title; the seed
- * function filters by `home_team` / `away_team` prefixes like
- *   "FIFA World Cup Winner"
- *   "FIFA World Cup Top Goalscorer"
- *   "FIFA World Cup Group A Winner"
+ * The Odds API surfaces tournament outrights (e.g. WC winner, Golden Boot,
+ * group winners) as their own `sport` keys (e.g. `soccer_fifa_world_cup_winner`)
+ * rather than as markets on the base sport. So we discover keys here, then
+ * fetch each outright sport's odds individually.
  */
-export function fetchWcOutrights(regions = "eu,us,uk"): Promise<OddsApiEvent[]> {
-  return call(`/sports/${WC2026_SPORT_KEY}/odds`, {
+export function fetchAllSports(): Promise<OddsApiSport[]> {
+  return call(`/sports`, { all: "true" });
+}
+
+/**
+ * Fetch outright odds for a specific outright sport key (e.g.
+ * `soccer_fifa_world_cup_winner`).
+ *
+ * For outright sports, the response shape is the same OddsApiEvent — each
+ * "event" has one market (named after the outright) with a list of outcomes
+ * (teams / players) and best prices per bookmaker.
+ */
+export function fetchOutrightsForSport(
+  sportKey: string,
+  regions = "eu,us,uk",
+): Promise<OddsApiEvent[]> {
+  return call(`/sports/${sportKey}/odds`, {
     regions,
     markets: "outrights",
     oddsFormat: "decimal",
   });
+}
+
+/** Back-compat alias retained for Day 3 callers; same as fetchOutrightsForSport. */
+export function fetchWcOutrights(regions = "eu,us,uk"): Promise<OddsApiEvent[]> {
+  return fetchOutrightsForSport(WC2026_SPORT_KEY, regions);
 }
