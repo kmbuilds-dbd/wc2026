@@ -1,27 +1,35 @@
 /**
- * Internal cron endpoint: refresh The Odds API responses, store snapshots.
+ * POST /api/cron/refresh-odds — pull WC 2026 outrights from The Odds API
+ * and persist as odds_snapshots rows.
  *
- * TODO Day 16–17: implement the actual odds-refresh pipeline.
+ * Fires daily at 06:00 UTC via wrangler.jsonc → triggers.crons. Also
+ * callable manually with x-cron-secret or as admin (requirePrivileged).
  */
 import { NextResponse, type NextRequest } from "next/server";
-import { getCloudflareContext } from "@opennextjs/cloudflare";
-import { requireAdmin, UnauthenticatedError } from "@/lib/auth";
+import { requirePrivileged, UnauthenticatedError } from "@/lib/auth";
+import { refreshOdds } from "@/lib/odds/refresh";
+import { OddsApiError } from "@/lib/odds/client";
 
 export async function POST(request: NextRequest) {
-  const cronSecret = request.headers.get("x-cron-secret");
-  const { env } = await getCloudflareContext({ async: true });
-  const expected = (env as unknown as { CRON_SECRET?: string }).CRON_SECRET;
-
-  if (!expected || cronSecret !== expected) {
-    try {
-      await requireAdmin();
-    } catch (e) {
-      if (e instanceof UnauthenticatedError) {
-        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-      }
-      throw e;
+  try {
+    await requirePrivileged(request);
+  } catch (e) {
+    if (e instanceof UnauthenticatedError) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
+    throw e;
   }
 
-  return NextResponse.json({ ok: false, error: "Not yet implemented" }, { status: 501 });
+  try {
+    const result = await refreshOdds();
+    return NextResponse.json({ ok: true, ...result });
+  } catch (e) {
+    if (e instanceof OddsApiError) {
+      return NextResponse.json(
+        { ok: false, error: e.message, status: e.status, body: e.body },
+        { status: 502 },
+      );
+    }
+    throw e;
+  }
 }
