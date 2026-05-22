@@ -45,9 +45,9 @@ export default async function DashboardPage() {
           desc="Visible to others after each category locks."
         />
         <Card
-          href="/picks/lineup/r32"
+          href="/picks/lineup/group"
           label="Lineup picks"
-          desc="1 GK · 1 DEF · 1 MID · 1 FWD per KO round (R32 → Final). Pool: teams still alive."
+          desc="1 GK · 1 DEF · 1 MID · 1 FWD for the group stage and each KO round. Pool: teams still alive."
         />
       </div>
 

@@ -3,6 +3,11 @@
 /**
  * KO bracket picks: 31 winners across R32 → Final.
  *
+ * Three-state lifecycle (see locks.ts → getBracketWindow):
+ *   pending → group stage hasn't finished, matchups not yet decided
+ *   open    → editable window between group stage end and R32 first kickoff
+ *   locked  → R32 first kickoff has passed, picks frozen
+ *
  * No matchup-slot resolution yet — each pick is just "which team wins this
  * named slot." When real fixtures land we'll annotate each slot with its
  * resolved matchup (e.g. "R32 #1 = winner of Group A vs best-3rd from CDEF").
@@ -16,12 +21,14 @@ import {
   slotsByRound,
   type BracketRound,
 } from "@/lib/bracket-shape";
+import type { BracketWindow } from "@/lib/locks";
 import { SectionHeader, SaveBar } from "./shared";
+import { PendingPanel } from "./pending-panel";
 
 interface Props {
   /** existing picks: { 'r32-1': teamId, ... 'final': teamId } */
   initial: Record<string, number>;
-  locked: boolean;
+  bracket: BracketWindow;
 }
 
 const ROUND_GRID: Record<BracketRound, string> = {
@@ -32,7 +39,9 @@ const ROUND_GRID: Record<BracketRound, string> = {
   final: "grid-cols-1",
 };
 
-export function BracketSection({ initial, locked }: Props) {
+export function BracketSection({ initial, bracket }: Props) {
+  const locked = bracket.state !== "open";
+
   const [picks, setPicks] = useState<Record<string, number | null>>(() => {
     const out: Record<string, number | null> = {};
     for (const { slots } of slotsByRound()) {
@@ -48,6 +57,25 @@ export function BracketSection({ initial, locked }: Props) {
     () => Object.values(picks).filter((v) => v !== null).length,
     [picks],
   );
+
+  if (bracket.state === "pending") {
+    return (
+      <section className="mb-12">
+        <SectionHeader
+          eyebrow="Section 3 of 4"
+          title="KO bracket"
+          subtitle="Pick the winner of every knockout match — Round of 32 through the Final."
+          completed={0}
+          total={BRACKET_SLOT_COUNT}
+        />
+        <PendingPanel
+          opensAt={bracket.opensAt}
+          title="Bracket picks unlock after group stage"
+          explainer="Matchups for the Round of 32 are decided by group standings — picks open"
+        />
+      </section>
+    );
+  }
 
   function setPick(slot: string, teamId: number | null) {
     setPicks((p) => ({ ...p, [slot]: teamId }));

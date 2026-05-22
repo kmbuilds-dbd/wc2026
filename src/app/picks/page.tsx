@@ -1,6 +1,7 @@
 import { eq, sql } from "drizzle-orm";
 import { PageHeader } from "@/components/page-header";
 import { LockBanner } from "@/components/lock-banner";
+import { ScoringLegend } from "@/components/picks/scoring-legend";
 import { GroupsSection } from "@/components/picks/groups-section";
 import { WildcardsSection } from "@/components/picks/wildcards-section";
 import { BracketSection } from "@/components/picks/bracket-section";
@@ -14,7 +15,7 @@ import {
   tournamentPicks,
   teams,
 } from "@/db/schema";
-import { isLocked } from "@/lib/locks";
+import { isLocked, getBracketWindow } from "@/lib/locks";
 import { seedTeamsFromSnapshot } from "@/lib/seed/teams-from-snapshot";
 
 export const metadata = {
@@ -62,8 +63,10 @@ export default async function PicksPage() {
     goldenGlovePlayerId: existingTournament?.goldenGlovePlayerId ?? null,
   };
 
-  // All four sections share the same lock point (tournament-wide).
+  // Groups, wildcards, and tournament-level picks all lock at first kickoff.
+  // Bracket has its own three-state lifecycle (pending → open → locked).
   const locked = await isLocked("group");
+  const bracket = await getBracketWindow();
 
   return (
     <>
@@ -75,6 +78,8 @@ export default async function PicksPage() {
       />
 
       <LockBanner scope="tournament" />
+
+      <ScoringLegend scope="picks" />
 
       {/* In-page TOC — jump between the four sections on long scroll. */}
       <nav className="flex flex-wrap gap-2 mb-8 font-mono text-[10px] uppercase tracking-[0.08em]">
@@ -102,7 +107,7 @@ export default async function PicksPage() {
       <div id="wildcards" />
       <WildcardsSection initial={wildcardInitial} locked={locked} />
       <div id="bracket" />
-      <BracketSection initial={bracketInitial} locked={locked} />
+      <BracketSection initial={bracketInitial} bracket={bracket} />
       <div id="tournament" />
       <TournamentSection initial={tournamentInitial} locked={locked} />
     </>

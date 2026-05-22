@@ -371,7 +371,7 @@ function scoreTournament(
 
 // ─── Lineup scoring ─────────────────────────────────────────────────────
 
-const LINEUP_ROUNDS: LineupRound[] = ["r32", "r16", "qf", "sf", "final"];
+const LINEUP_ROUNDS: LineupRound[] = ["group", "r32", "r16", "qf", "sf", "final"];
 
 interface PlayerStatLookup {
   /** player_id → team_id */
@@ -509,7 +509,7 @@ export function computeAllScores(input: ComputeInput): ScoreRow[] {
 
   // Pre-bucket matches by round for lineup scoring.
   const matchesByRound: Record<LineupRound, Match[]> = {
-    r32: [], r16: [], qf: [], sf: [], final: [],
+    group: [], r32: [], r16: [], qf: [], sf: [], final: [],
   };
   for (const m of input.matches) {
     if (m.stage in matchesByRound) {

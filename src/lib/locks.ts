@@ -20,7 +20,7 @@ export type PickCategory =
   | "tournament"
   | "lineup";
 
-export type LineupRound = "r32" | "r16" | "qf" | "sf" | "final";
+export type LineupRound = "group" | "r32" | "r16" | "qf" | "sf" | "final";
 
 /**
  * Approximate FIFA WC 2026 kickoffs. Used as a fallback when the matches
@@ -38,23 +38,39 @@ function utc(year: number, month1: number, day: number, hour = 20): number {
 
 export const FALLBACK_KICKOFFS = {
   firstMatchUtc: utc(2026, 6, 11), // Group stage opener
+  bracketOpensAt: utc(2026, 6, 28, 0), // Midnight UTC the day R32 starts — group stage is over
   r32: utc(2026, 6, 28),
   r16: utc(2026, 7, 4),
   qf: utc(2026, 7, 9),
   sf: utc(2026, 7, 14),
   final: utc(2026, 7, 19),
+  // KO lineup opens-at: midnight UTC the day the round starts. Gives users
+  // the window between the previous round's last match and this round's
+  // first kickoff to set their lineup with alive teams known.
+  lineupOpensAt: {
+    r32: utc(2026, 6, 28, 0),
+    r16: utc(2026, 7, 4, 0),
+    qf: utc(2026, 7, 9, 0),
+    sf: utc(2026, 7, 14, 0),
+    final: utc(2026, 7, 19, 0),
+  },
 } as const;
 
 /** Backwards-compatible export for the dashboard countdown. */
 export const FIRST_KICKOFF_UTC = FALLBACK_KICKOFFS.firstMatchUtc;
 
+export type KoRound = Exclude<LineupRound, "group">;
+
 export interface Kickoffs {
   firstMatchUtc: number;
+  bracketOpensAt: number;
+  group: number;
   r32: number;
   r16: number;
   qf: number;
   sf: number;
   final: number;
+  lineupOpensAt: Record<KoRound, number>;
 }
 
 /**
@@ -63,14 +79,69 @@ export interface Kickoffs {
  */
 export async function getKickoffs(): Promise<Kickoffs> {
   const fromDb = await getStageKickoffs();
+  const groupKickoff = fromDb.group ?? FALLBACK_KICKOFFS.firstMatchUtc;
   return {
-    firstMatchUtc: fromDb.group ?? FALLBACK_KICKOFFS.firstMatchUtc,
+    firstMatchUtc: groupKickoff,
+    bracketOpensAt: FALLBACK_KICKOFFS.bracketOpensAt,
+    group: groupKickoff,
     r32: fromDb.r32 ?? FALLBACK_KICKOFFS.r32,
     r16: fromDb.r16 ?? FALLBACK_KICKOFFS.r16,
     qf: fromDb.qf ?? FALLBACK_KICKOFFS.qf,
     sf: fromDb.sf ?? FALLBACK_KICKOFFS.sf,
     final: fromDb.final ?? FALLBACK_KICKOFFS.final,
+    lineupOpensAt: { ...FALLBACK_KICKOFFS.lineupOpensAt },
   };
+}
+
+export type PickWindowState = "pending" | "open" | "locked";
+
+export interface PickWindow {
+  state: PickWindowState;
+  /** Unix seconds when `pending` → `open`. For categories with no pending state, this is 0. */
+  opensAt: number;
+  /** Unix seconds when `open` → `locked`. */
+  lockAt: number;
+}
+
+// Back-compat aliases (legacy callers).
+export type BracketState = PickWindowState;
+export type BracketWindow = PickWindow;
+
+/**
+ * Bracket has a three-state lifecycle because picks require knowing the KO
+ * matchups, which are only resolved after group stage ends:
+ *   pending → before bracketOpensAt
+ *   open    → between bracketOpensAt and r32 first kickoff
+ *   locked  → at or after r32 first kickoff
+ */
+export async function getBracketWindow(): Promise<PickWindow> {
+  const k = await getKickoffs();
+  const nowSec = Math.floor(Date.now() / 1000);
+  const state: PickWindowState =
+    nowSec < k.bracketOpensAt ? "pending" : nowSec >= k.r32 ? "locked" : "open";
+  return { state, opensAt: k.bracketOpensAt, lockAt: k.r32 };
+}
+
+/**
+ * Lineup window per round. KO rounds have a pending state because alive teams
+ * aren't decided until the previous round finishes. Group has no pending
+ * state (no prior round to wait on).
+ */
+export async function getLineupWindow(round: LineupRound): Promise<PickWindow> {
+  const k = await getKickoffs();
+  const nowSec = Math.floor(Date.now() / 1000);
+  if (round === "group") {
+    return {
+      state: nowSec >= k.group ? "locked" : "open",
+      opensAt: 0,
+      lockAt: k.group,
+    };
+  }
+  const opensAt = k.lineupOpensAt[round];
+  const lockAt = k[round];
+  const state: PickWindowState =
+    nowSec < opensAt ? "pending" : nowSec >= lockAt ? "locked" : "open";
+  return { state, opensAt, lockAt };
 }
 
 export async function isLocked(
@@ -81,7 +152,11 @@ export async function isLocked(
   const nowSec = Math.floor(Date.now() / 1000);
   if (category === "lineup") {
     if (!round) throw new Error("round is required for category=lineup");
-    return nowSec >= k[round];
+    if (round === "group") return nowSec >= k.group;
+    return nowSec < k.lineupOpensAt[round] || nowSec >= k[round];
+  }
+  if (category === "bracket") {
+    return nowSec < k.bracketOpensAt || nowSec >= k.r32;
   }
   return nowSec >= k.firstMatchUtc;
 }

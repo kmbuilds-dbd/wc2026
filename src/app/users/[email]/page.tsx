@@ -25,8 +25,9 @@ export const metadata = {
   title: "Player picks — WC2026",
 };
 
-const LINEUP_ROUNDS: LineupRound[] = ["r32", "r16", "qf", "sf", "final"];
+const LINEUP_ROUNDS: LineupRound[] = ["group", "r32", "r16", "qf", "sf", "final"];
 const LINEUP_ROUND_LABEL: Record<LineupRound, string> = {
+  group: "Group stage",
   r32: "Round of 32",
   r16: "Round of 16",
   qf: "Quarter-finals",
@@ -64,6 +65,7 @@ export default async function UserPicksPage({
     tPick,
     lPicks,
     tournamentLocked,
+    groupLineupLocked,
     r32Locked,
     r16Locked,
     qfLocked,
@@ -76,6 +78,7 @@ export default async function UserPicksPage({
     db.select().from(tournamentPicks).where(eq(tournamentPicks.userEmail, targetEmail)).get(),
     db.select().from(lineupPicks).where(eq(lineupPicks.userEmail, targetEmail)),
     isLocked("group"),
+    isLocked("lineup", "group"),
     isLocked("lineup", "r32"),
     isLocked("lineup", "r16"),
     isLocked("lineup", "qf"),
@@ -84,6 +87,7 @@ export default async function UserPicksPage({
   ]);
 
   const lineupLocks: Record<LineupRound, boolean> = {
+    group: groupLineupLocked,
     r32: r32Locked,
     r16: r16Locked,
     qf: qfLocked,

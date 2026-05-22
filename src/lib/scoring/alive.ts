@@ -26,6 +26,9 @@ export function computeAliveTeams(
   actuals: Actuals,
 ): Set<number> {
   switch (round) {
+    case "group":
+      // Group stage: all 48 teams are eligible — every team plays 3 matchdays.
+      return ALL_TEAM_IDS;
     case "r32": {
       const advancing = new Set<number>();
       // top-2 per group

@@ -55,7 +55,7 @@ export const lineupPicks = sqliteTable(
   "lineup_picks",
   {
     userEmail: text("user_email").notNull().references(() => users.email),
-    round: text("round", { enum: ["r32", "r16", "qf", "sf", "final"] }).notNull(),
+    round: text("round", { enum: ["group", "r32", "r16", "qf", "sf", "final"] }).notNull(),
     position: text("position", { enum: ["GK", "DEF", "MID", "FWD"] }).notNull(),
     playerId: integer("player_id").notNull(),
     updatedAt: integer("updated_at").notNull(),
