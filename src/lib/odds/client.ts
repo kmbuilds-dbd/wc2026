@@ -10,8 +10,6 @@
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import type { OddsApiEvent } from "./types";
 
-export const WC2026_SPORT_KEY = "soccer_fifa_world_cup";
-
 export class OddsApiError extends Error {
   constructor(
     message: string,
@@ -101,9 +99,4 @@ export function fetchOutrightsForSport(
     markets: "outrights",
     oddsFormat: "decimal",
   });
-}
-
-/** Back-compat alias retained for Day 3 callers; same as fetchOutrightsForSport. */
-export function fetchWcOutrights(regions = "eu,us,uk"): Promise<OddsApiEvent[]> {
-  return fetchOutrightsForSport(WC2026_SPORT_KEY, regions);
 }

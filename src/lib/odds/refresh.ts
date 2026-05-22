@@ -1,78 +1,54 @@
 /**
- * Pull all WC 2026 outright markets from The Odds API and persist them
- * as `odds_snapshots` rows keyed by market.
+ * Pull WC 2026 outright odds from The Odds API and persist them as
+ * `odds_snapshots` rows keyed by our internal market name.
+ *
+ * The Odds API exposes each tournament outright as its OWN sport key (not as
+ * a market on the base soccer_fifa_world_cup sport). We fan out over the
+ * map below, one HTTP request per sport key.
  *
  * Idempotent per (market, snapshot_at). Repeated calls within the same
- * second skip duplicate inserts but otherwise just append history — the
- * /odds page reads the latest row per market.
+ * second update the row in place.
  *
- * Market keys:
- *   - "tournament_winner"      → outright "FIFA World Cup Winner"
- *   - "top_scorer"             → outright "FIFA World Cup Top Goalscorer"
- *   - "group_winner:A".."group_winner:L" → 12 group-winner outright markets
+ * To add a market: confirm its sport key exists with /api/admin/odds-probe,
+ * then add it to SPORT_KEY_TO_MARKET. As of 2026-05-21 The Odds API has only
+ * published `soccer_fifa_world_cup_winner`; top-scorer and group-winner keys
+ * may appear closer to kickoff.
  */
 import { getDb } from "@/db/client";
 import { oddsSnapshots } from "@/db/schema";
-import { fetchWcOutrights } from "./client";
-import type { OddsApiEvent } from "./types";
+import { fetchOutrightsForSport } from "./client";
+
+const SPORT_KEY_TO_MARKET: Record<string, string> = {
+  soccer_fifa_world_cup_winner: "tournament_winner",
+};
 
 export interface RefreshOddsResult {
   fetched: number;
-  matched: number;
-  unmatched: Array<{ id: string; home: string; away: string }>;
   marketsSaved: string[];
   snapshotAt: number;
 }
 
-/** Classify an Odds API event title to one of our internal market keys. */
-function classifyEvent(ev: OddsApiEvent): string | null {
-  const title = `${ev.home_team} ${ev.away_team}`.toLowerCase();
-  if (title.includes("winner") && !title.includes("group")) {
-    return "tournament_winner";
-  }
-  if (title.includes("top goalscorer") || title.includes("top scorer")) {
-    return "top_scorer";
-  }
-  const groupMatch = title.match(/group\s+([a-l])\s+winner/);
-  if (groupMatch) return `group_winner:${groupMatch[1].toUpperCase()}`;
-  return null;
-}
-
 export async function refreshOdds(): Promise<RefreshOddsResult> {
-  const events = await fetchWcOutrights();
   const snapshotAt = Math.floor(Date.now() / 1000);
-
-  const matched: Array<{ market: string; payload: OddsApiEvent }> = [];
-  const unmatched: RefreshOddsResult["unmatched"] = [];
-
-  for (const ev of events) {
-    const market = classifyEvent(ev);
-    if (market) matched.push({ market, payload: ev });
-    else unmatched.push({ id: ev.id, home: ev.home_team, away: ev.away_team });
-  }
-
   const db = await getDb();
+  let fetched = 0;
   const marketsSaved: string[] = [];
-  for (const { market, payload } of matched) {
-    await db
-      .insert(oddsSnapshots)
-      .values({
-        market,
-        snapshotAt,
-        payload,
-      })
-      .onConflictDoUpdate({
-        target: [oddsSnapshots.market, oddsSnapshots.snapshotAt],
-        set: { payload },
-      });
+
+  for (const [sportKey, market] of Object.entries(SPORT_KEY_TO_MARKET)) {
+    const events = await fetchOutrightsForSport(sportKey);
+    if (events.length === 0) continue;
+    fetched += events.length;
+    for (const ev of events) {
+      await db
+        .insert(oddsSnapshots)
+        .values({ market, snapshotAt, payload: ev })
+        .onConflictDoUpdate({
+          target: [oddsSnapshots.market, oddsSnapshots.snapshotAt],
+          set: { payload: ev },
+        });
+    }
     marketsSaved.push(market);
   }
 
-  return {
-    fetched: events.length,
-    matched: matched.length,
-    unmatched,
-    marketsSaved,
-    snapshotAt,
-  };
+  return { fetched, marketsSaved, snapshotAt };
 }
