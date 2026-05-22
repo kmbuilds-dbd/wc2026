@@ -51,6 +51,9 @@ export default function RootLayout({
             <a href="/picks" className="hover:text-accent">
               Picks
             </a>
+            <a href="/matches" className="hover:text-accent">
+              Matches
+            </a>
             <a href="/leaderboard" className="hover:text-accent">
               Leaderboard
             </a>

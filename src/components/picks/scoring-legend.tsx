@@ -65,7 +65,8 @@ function PicksRules() {
         <Row label="Final" pts={RULES.BRACKET_FINAL} />
       </Group>
       <Group title="Tournament · per pick">
-        <Row label="Tournament winner" pts={RULES.TOURNAMENT_WINNER} />
+        <Row label="Winner pick — team lifts trophy" pts={RULES.TOURNAMENT_WINNER} />
+        <Row label="Winner pick — team loses the Final" pts={RULES.TOURNAMENT_FINALIST} />
         <Row label="Top scorer" pts={RULES.TOP_SCORER} />
         <Row label="Golden Glove" pts={RULES.GOLDEN_GLOVE} />
       </Group>

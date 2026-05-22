@@ -56,6 +56,8 @@ export interface Actuals {
   winnersByRound: Record<BracketRound, Set<number>>;
   /** Champion team_id (winner of stage='final'). */
   champion: number | null;
+  /** Finalist team_id (team that LOST stage='final'). null if final hasn't finished. */
+  finalist: number | null;
   /** Set of player_ids tied for most goals. */
   topScorerPlayerIds: Set<number>;
   /** Set of team_ids tied for most clean sheets (used for golden glove). */
@@ -160,8 +162,22 @@ export function computeActuals(matches: Match[]): Actuals {
     if (winner != null) winnersByRound[stage].add(winner);
   }
 
-  // 4. Champion = winner of the Final.
+  // 4. Champion = winner of the Final. Finalist = the team that lost the final.
   const champion = [...winnersByRound.final][0] ?? null;
+  const finalMatch = finished.find(
+    (m) =>
+      m.stage === "final" &&
+      m.homeScore != null &&
+      m.awayScore != null &&
+      m.homeScore !== m.awayScore,
+  );
+  let finalist: number | null = null;
+  if (finalMatch && champion != null) {
+    finalist =
+      finalMatch.homeTeamId === champion
+        ? finalMatch.awayTeamId
+        : finalMatch.homeTeamId;
+  }
 
   // 5. Top scorer (player_ids tied for most goals).
   const goalsByPlayer: Map<number, number> = new Map();
@@ -215,6 +231,7 @@ export function computeActuals(matches: Match[]): Actuals {
     wildcardAdvancers,
     winnersByRound,
     champion,
+    finalist,
     topScorerPlayerIds,
     goldenGloveTeamIds,
   };
@@ -326,13 +343,19 @@ function scoreTournament(
   if (!pick) return [];
   const rows: ScoreRow[] = [];
 
-  // Winner
+  // Winner — picking the champion scores TOURNAMENT_WINNER; picking the
+  // losing finalist scores TOURNAMENT_FINALIST. One key per pick, exclusive.
   if (pick.winnerTeamId != null && actual.champion != null) {
+    let points = 0;
+    if (pick.winnerTeamId === actual.champion) points = RULES.TOURNAMENT_WINNER;
+    else if (actual.finalist != null && pick.winnerTeamId === actual.finalist) {
+      points = RULES.TOURNAMENT_FINALIST;
+    }
     rows.push({
       userEmail: user.email,
       category: "tournament",
       key: "tournament:winner",
-      points: pick.winnerTeamId === actual.champion ? RULES.TOURNAMENT_WINNER : 0,
+      points,
       computedAt: now,
     });
   }
