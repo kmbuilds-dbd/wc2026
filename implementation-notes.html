@@ -1,0 +1,474 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Implementation notes — WC2026 pick'em</title>
+  <style>
+    :root {
+      --bg: #0e0e14; --surface: #1a1a22; --text: #e6e6ea; --muted: #9999a3;
+      --dim: #6b6b76; --accent: #f7c325; --border: #2a2a35; --danger: #e85a4f;
+      --confirmed: #5fc97f;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; padding: 2rem 1.5rem; background: var(--bg); color: var(--text);
+      font: 14px/1.55 -apple-system, "Segoe UI", system-ui, sans-serif;
+      max-width: 980px; margin-inline: auto;
+    }
+    h1 { font-size: 1.9rem; margin: 0 0 0.25rem; letter-spacing: 0.02em; }
+    h2 {
+      font-size: 1.15rem; margin: 2.2rem 0 0.6rem; padding-bottom: 0.3rem;
+      border-bottom: 1px solid var(--border); letter-spacing: 0.06em;
+      text-transform: uppercase; color: var(--accent);
+    }
+    h3 { font-size: 1rem; margin: 1.3rem 0 0.4rem; color: var(--text); }
+    p, ul, ol { margin: 0.4rem 0 0.7rem; }
+    code, pre {
+      font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+      color: var(--accent); background: var(--surface);
+      padding: 1px 5px; border-radius: 3px; border: 1px solid var(--border);
+    }
+    pre { padding: 0.8rem; overflow-x: auto; display: block; color: var(--text); }
+    pre code { background: none; border: 0; padding: 0; color: inherit; }
+    table { border-collapse: collapse; width: 100%; margin: 0.5rem 0 1rem; font-size: 13px; }
+    th, td { padding: 0.45rem 0.6rem; text-align: left; border-bottom: 1px solid var(--border); vertical-align: top; }
+    th { font: 11px/1 ui-monospace, monospace; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); font-weight: normal; }
+    .meta { color: var(--muted); font: 11px/1.4 ui-monospace, monospace; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 1rem; }
+    .tag {
+      display: inline-block; padding: 1px 6px; border-radius: 3px; border: 1px solid;
+      font: 10px/1.4 ui-monospace, monospace; text-transform: uppercase; letter-spacing: 0.08em;
+    }
+    .tag-done { color: var(--confirmed); border-color: var(--confirmed); }
+    .tag-partial { color: var(--accent); border-color: var(--accent); }
+    .tag-gap { color: var(--danger); border-color: var(--danger); }
+    .tag-extra { color: #7cc7e8; border-color: #7cc7e8; }
+    blockquote {
+      margin: 0.5rem 0; padding: 0.5rem 0.9rem; border-left: 3px solid var(--accent);
+      color: var(--muted); background: var(--surface);
+    }
+    a { color: var(--accent); }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+    @media (max-width: 700px) { .grid-2 { grid-template-columns: 1fr; } }
+    .small { font-size: 12px; color: var(--muted); }
+    hr { border: 0; border-top: 1px solid var(--border); margin: 2rem 0; }
+  </style>
+</head>
+<body>
+
+<h1>Implementation notes — WC2026 pick'em</h1>
+<div class="meta">Treating README.md as the spec · Commits 1 → 22 reconciled · Last updated 2026-05-22</div>
+
+<h2>How to read this document</h2>
+<p>
+  The README is the project's design spec. This document tracks every place the
+  actual implementation has either fully matched the spec, diverged from it, or
+  added something the spec didn't anticipate. It is intentionally retrospective
+  through 22 commits — there is no work-in-progress on top of this baseline.
+</p>
+<p class="small">
+  Legend: <span class="tag tag-done">DONE</span> matches spec ·
+  <span class="tag tag-partial">PARTIAL</span> spec block done but with caveats ·
+  <span class="tag tag-gap">GAP</span> spec block not yet done ·
+  <span class="tag tag-extra">EXTRA</span> not in spec, added during implementation
+</p>
+
+<!-- ====================================================== -->
+<h2>1 · Original spec (from README.md)</h2>
+<p>
+  Closed-group (≤50 users) FIFA WC 2026 predictions web app. Cloudflare-native:
+  Next.js 16 App Router on Workers via <code>@opennextjs/cloudflare</code>, D1
+  for app data, CF Access for auth, daily-refreshed odds, per-match score
+  ingestion. The README declares a 19-day Day-by-Day build plan with a Jun 9
+  ship deadline (WC kicks off Jun 11).
+</p>
+
+<table>
+  <thead>
+    <tr><th>Day block</th><th>Spec deliverable</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Day 1–2</td><td>Scaffold + adapter + theme + auth + stubs</td></tr>
+    <tr><td>Day 3</td><td>Seed teams + matches</td></tr>
+    <tr><td>Day 4–5</td><td>Port squad tracker</td></tr>
+    <tr><td>Day 6–8</td><td>Pick UI</td></tr>
+    <tr><td>Day 9–11</td><td>Scoring engine + ingestion</td></tr>
+    <tr><td>Day 12–13</td><td>Lineup builder</td></tr>
+    <tr><td>Day 14–15</td><td>Public roster + polish</td></tr>
+    <tr><td>Day 16–17</td><td>Odds page</td></tr>
+    <tr><td>Day 18–19</td><td>E2E test</td></tr>
+  </tbody>
+</table>
+
+<!-- ====================================================== -->
+<h2>2 · Spec status — Day-by-Day reconciliation</h2>
+<table>
+  <thead>
+    <tr><th>Day block</th><th>State</th><th>Implementation</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Day 1–2</td>
+      <td><span class="tag tag-done">DONE</span></td>
+      <td>Scaffold + CF adapter + Tailwind 4 theme + CF Access auth helper + page stubs.<br><span class="small">commit a3f1c5e</span></td>
+    </tr>
+    <tr>
+      <td>Day 3</td>
+      <td><span class="tag tag-partial">PARTIAL</span></td>
+      <td>api-sports + odds clients, seed pipeline, D1-backed locks. <em>Data is not actually seeded</em> — the api-sports Free tier blocks 2026 seasons, so the pipeline is wired but not live. See §5 "Data provider deferral."<br><span class="small">commit 05d7f7c · plus 6f789b2 added x-cron-secret bypass for admin endpoints</span></td>
+    </tr>
+    <tr>
+      <td>Day 3.2</td>
+      <td><span class="tag tag-extra">EXTRA</span></td>
+      <td>bzzoiro provider probe (since deleted). Verified that the free bzzoiro tier only exposes 26 placeholder bracket-slot events for WC 2026, no group-stage matches. Provider is not usable.<br><span class="small">commits 88b0e7d / c8983b7 / 44677da</span></td>
+    </tr>
+    <tr>
+      <td>Day 4–5</td>
+      <td><span class="tag tag-done">DONE</span></td>
+      <td>Squad tracker ported to <code>/teams</code> as a React UI, sourced from a frozen <code>src/data/tracker-snapshot.json</code>.<br><span class="small">commit 0843768</span></td>
+    </tr>
+    <tr>
+      <td>Day 6</td>
+      <td><span class="tag tag-done">DONE</span></td>
+      <td>Groups pick section + lock banner + teams snapshot seed.<br><span class="small">commits ac77235 / 52ca336 (open-admin fallback)</span></td>
+    </tr>
+    <tr>
+      <td>Days 7–8</td>
+      <td><span class="tag tag-done">DONE</span></td>
+      <td>Wildcards / Bracket / Tournament pick sections completed.<br><span class="small">commit 285631d</span></td>
+    </tr>
+    <tr>
+      <td>Days 9–11</td>
+      <td><span class="tag tag-partial">PARTIAL</span></td>
+      <td>Scoring engine + leaderboard + <code>/api/admin/match-result</code> endpoint. <em>Ingest cron is wired</em>, but the cron is gated on a paid api-sports tier and isn't pulling data today.<br><span class="small">commits 4457f31 / 4810bf8</span></td>
+    </tr>
+    <tr>
+      <td>Days 12–13</td>
+      <td><span class="tag tag-done">DONE</span></td>
+      <td>Per-round lineup picks UI + scoring.<br><span class="small">commit 3eb9e68</span></td>
+    </tr>
+    <tr>
+      <td>Day 14</td>
+      <td><span class="tag tag-done">DONE</span></td>
+      <td>Public roster view at <code>/users/[email]</code>, clickable from leaderboard.<br><span class="small">commit 8575389</span></td>
+    </tr>
+    <tr>
+      <td>Day 15</td>
+      <td><span class="tag tag-done">DONE</span></td>
+      <td>Mobile nav wrap, in-page TOC on <code>/picks</code>, responsive leaderboard.<br><span class="small">commit 33b7401</span></td>
+    </tr>
+    <tr>
+      <td>Days 16–17</td>
+      <td><span class="tag tag-done">DONE</span></td>
+      <td><code>/odds</code> page + <code>refresh-odds</code> cron. After implementation, the cron 422'd against the base WC sport key — The Odds API exposes each outright as its own sport key. Fixed by fanning out across <code>soccer_fifa_world_cup_winner</code> et al. Today only <code>tournament_winner</code> is published; <code>top_scorer</code> and group-winner keys may appear closer to kickoff.<br><span class="small">commits 62653ef → 96861e6 → 0a18a05</span></td>
+    </tr>
+    <tr>
+      <td>Days 18–19</td>
+      <td><span class="tag tag-gap">GAP</span></td>
+      <td>E2E test pass not implemented. No test framework installed; verification has been build-clean + manual click-through. See §8 "Open questions."</td>
+    </tr>
+  </tbody>
+</table>
+
+<!-- ====================================================== -->
+<h2>Update — 2026-05-22 (post-spec)</h2>
+<p>Three operational gaps from §7 of the original notes have been addressed:</p>
+<ul>
+  <li>
+    <strong>Legacy worker retired.</strong> <code>wc2026_worker/worker.js</code>
+    now 301-redirects <code>/</code> and <code>/index.html</code> to
+    <code>https://wc2026.followbuilders.workers.dev/teams</code>. Daily
+    Claude-powered cron + admin endpoints (<code>/api/update</code>,
+    <code>/api/rebuild</code>, <code>/api/refresh</code>, <code>/api/meta</code>) kept
+    intact. A new public <code>GET /teams.json</code> route exposes the live KV
+    teams data so the new app can consume it.
+  </li>
+  <li>
+    <strong>Manual squad refresh on /teams.</strong> Admin-only button
+    (server-rendered when <code>user.isAdmin</code>) posts to
+    <code>POST /api/admin/refresh-squads</code>. The endpoint pulls
+    <code>wc2026-squads.followbuilders.workers.dev/teams.json</code> and writes
+    to <code>CACHE</code> KV under <code>squads:latest</code>. The <code>/teams</code>
+    page now reads KV first, falls back to the bundled snapshot. Includes a
+    "last refreshed" timestamp and reloads after a successful pull.
+  </li>
+  <li>
+    <strong>CF Access:</strong> still pending — dashboard-only setup. Steps
+    documented in the chat exchange (Zero Trust → Access → Applications →
+    Self-hosted, allowlist 50 emails via One-time PIN). No code change needed
+    on the worker side; the auth helper already reads
+    <code>cf-access-authenticated-user-email</code>.
+  </li>
+</ul>
+
+<h2>3 · Additions beyond the spec</h2>
+<p>Net-new features added during implementation that the README did not request:</p>
+
+<table>
+  <thead>
+    <tr><th>Addition</th><th>What it is</th><th>Why</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><span class="tag tag-extra">EXTRA</span><br>Bracket pending lock</td>
+      <td>Bracket section on <code>/picks</code> is locked closed until <strong>Jun 28 00:00 UTC</strong> (group stage end), opens for ~20h, then locks at R32 first kickoff. Three-state lifecycle: <code>pending → open → locked</code>.</td>
+      <td>The original lock model treated bracket like the other tournament-level sections (locks at first kickoff). But bracket picks require knowing the R32 matchups, which are only resolved after group stage. The old behavior would have asked users to predict winners between unknown teams. Spec didn't address this.</td>
+    </tr>
+    <tr>
+      <td><span class="tag tag-extra">EXTRA</span><br>Group-stage lineup</td>
+      <td>New round <code>/picks/lineup/group</code>. One pick per position from all 48 teams, scored across all 3 matchdays.</td>
+      <td>Spec only mentioned per-KO-round lineups (R32 → Final). User asked for the group stage to also have a lineup. Required widening the <code>round</code> enum and a small extension to <code>computeAliveTeams</code>.</td>
+    </tr>
+    <tr>
+      <td><span class="tag tag-extra">EXTRA</span><br>KO lineup pending locks</td>
+      <td>R32 / R16 / QF / SF / Final lineups now follow the same three-state lifecycle as bracket. Each opens midnight UTC the day the round starts, locks at first kickoff.</td>
+      <td>Same logic as bracket pending — alive-team pool for each KO round isn't known until the prior round finishes.</td>
+    </tr>
+    <tr>
+      <td><span class="tag tag-extra">EXTRA</span><br>Scoring legend</td>
+      <td>Collapsible <code>&lt;details&gt;</code> panel on <code>/picks</code> and every lineup page, showing the live point values per category. Values pulled from <code>RULES</code> so the legend can't drift from real scoring.</td>
+      <td>Users had no in-app way to see how points are awarded. Spec didn't address pick rules visibility.</td>
+    </tr>
+    <tr>
+      <td><span class="tag tag-extra">EXTRA</span><br>/matches page</td>
+      <td>Per-stage match list (Group A–L, then KO rounds) with expandable goal/assist events per match, plus top-scorer and clean-sheet leaderboards.</td>
+      <td>Spec covered fixture ingestion via cron but never an end-user surface to view matches and results. Added so users can audit what events drove their score.</td>
+    </tr>
+    <tr>
+      <td><span class="tag tag-extra">EXTRA</span><br>/api/admin/odds-probe</td>
+      <td>Diagnostic endpoint listing all WC-related sport keys The Odds API knows about.</td>
+      <td>Built while debugging the 422 INVALID_MARKET_COMBO error. Kept post-fix so we can re-check whether group/top-scorer outright sport keys have been published.</td>
+    </tr>
+    <tr>
+      <td><span class="tag tag-extra">EXTRA</span><br>/api/admin/match-result</td>
+      <td>Admin POST endpoint to manually record a finished match's score + events (for the fallback "no data provider" world).</td>
+      <td>Built during Days 9–11 because the api-sports Free tier blocks 2026 data. Lets an admin keep the leaderboard moving even if the auto-ingest never lands.</td>
+    </tr>
+  </tbody>
+</table>
+
+<!-- ====================================================== -->
+<h2>4 · Deviations from the spec</h2>
+
+<h3>4.1 Scoring rebalance</h3>
+<p>
+  README does not specify exact point values — the spec is silent on the scoring
+  tuning. Initial implementation went with what felt natural; after a Monte Carlo
+  exercise (50k simulated tournaments) we found the original distribution gave a
+  lucky tournament-winner picker a near-equivalent score to a fully-skilled
+  player who happened to pick the wrong champion (621 vs 607 mean). Skilled+lucky
+  won 99.9% of head-to-heads — i.e. tournament-winner identification was
+  effectively decisive.
+</p>
+<p>Three tunings were applied in commit <code>893f888</code>:</p>
+<table>
+  <thead><tr><th>Rule</th><th>Before</th><th>After</th><th>Rationale</th></tr></thead>
+  <tbody>
+    <tr><td><code>BRACKET_SF / BRACKET_FINAL</code></td><td>80 / 160</td><td>60 / 80</td><td>Flattens the winner-chain bonus from 310 → 210.</td></tr>
+    <tr><td><code>TOURNAMENT_WINNER</code></td><td>100</td><td>50</td><td>Halves the binary-winner bonus.</td></tr>
+    <tr><td><code>TOURNAMENT_FINALIST</code> (new)</td><td>—</td><td>50</td><td>Picking the losing finalist now scores partial credit — a smoother gradient.</td></tr>
+    <tr><td><code>GROUP_PICK_EXACT</code></td><td>5</td><td>8</td><td>Raises the floor on skill-based categories.</td></tr>
+    <tr><td><code>LINEUP_GOAL / LINEUP_ASSIST</code></td><td>10 / 5</td><td>15 / 8</td><td>Same — bigger reward for active prediction.</td></tr>
+  </tbody>
+</table>
+<p>
+  Result after rebalance (50k trials): skilled-unlucky now beats lucky-but-bad
+  by ~270 pts on average (was −14 before). Skilled+lucky win share dropped
+  from 99.9% → 90.8%. <em>This is a divergence, not a fix</em> — the original
+  values could have been left alone. The user reviewed the simulation and chose
+  to apply the rebalance.
+</p>
+
+<h3>4.2 Bracket lock semantics</h3>
+<p>
+  README's <code>locks.ts</code> bullet says <em>"every write path must call <code>isLocked()</code> before mutating"</em>
+  and implies a single lock point per category. The actual implementation has a
+  three-state model (<code>pending</code> / <code>open</code> / <code>locked</code>) for bracket and KO lineups
+  because the binary lock-or-not couldn't express "matchups not yet decided."
+  <code>isLocked("bracket")</code> still returns a boolean for write-protection (true if
+  not in the open window); UI uses <code>getBracketWindow()</code> / <code>getLineupWindow()</code>
+  for the tri-state rendering.
+</p>
+
+<h3>4.3 Round enum expanded</h3>
+<p>
+  README mentions only R32–Final for lineups. Schema now also accepts
+  <code>"group"</code>. Drizzle confirmed this is a TypeScript-level enum only — SQLite
+  stores plain TEXT — so no migration was needed. The added round flows through
+  <code>LineupRound</code> type, <code>computeAliveTeams</code>, <code>LINEUP_ROUNDS</code>, the lineup
+  picks page, and the locked roster view.
+</p>
+
+<!-- ====================================================== -->
+<h2>5 · Design decisions made during implementation</h2>
+
+<h3>5.1 Data provider deferral</h3>
+<p>
+  README assumes <code>api-sports.io</code> Free tier supplies match data, lineups, top
+  scorers (100 req/day). In practice the Free tier blocked all 2026+ seasons
+  with <code>"Free plans do not have access to this season, try from 2022 to 2024."</code>
+  Five other providers (balldontlie GOAT, TheSportsDB, bzzoiro, Apify
+  macheta) were evaluated; none of the free options actually cover WC 2026.
+</p>
+<p>The two realistic paths:</p>
+<ul>
+  <li><strong>api-football Pro $19/mo</strong> — covers everything, our existing client code already targets it. Subscribe ~Jun 9, renew once, cancel after the tournament.</li>
+  <li><strong>$0 hybrid</strong> — hardcoded fixtures from FIFA's published schedule + admin form for entering match results manually via <code>/api/admin/match-result</code>. ~4h rewrite, ~2h admin time during tournament.</li>
+</ul>
+<p>
+  <strong>Decision held until ~Jun 7–8</strong> per progress.md. The choice doesn't
+  block any of the pick UI or scoring work that's been built — those work fine
+  with the snapshot data already in place.
+</p>
+
+<h3>5.2 Empty-state design</h3>
+<p>
+  Several pages (<code>/odds</code>, <code>/matches</code>, <code>/leaderboard</code>) can render before
+  any data exists. Each has a dedicated empty state explaining what's missing
+  and how to populate it (e.g. "<code>POST /api/cron/refresh-odds</code> with the cron
+  secret"). Chosen over hiding the page entirely so admin testing is possible
+  pre-launch.
+</p>
+
+<h3>5.3 Top Scorer / Golden Glove store player IDs</h3>
+<p>
+  Schema stores <code>topScorerPlayerId</code> and <code>goldenGlovePlayerId</code> as integers
+  (not team IDs). For Golden Glove this requires a player→team join at scoring
+  time because the award is team-based (most clean sheets); we credit any GK of
+  the leading team. Decision: keep the player-id contract for UI uniformity
+  even though the actual award is team-level.
+</p>
+
+<h3>5.4 The Odds API key discovery</h3>
+<p>
+  The initial implementation assumed the base sport <code>soccer_fifa_world_cup</code>
+  with <code>markets=outrights</code>. The Odds API rejected this with 422
+  INVALID_MARKET_COMBO; outrights are exposed as their own sport keys
+  (<code>soccer_fifa_world_cup_winner</code>, …). Refactored to a hardcoded
+  sport-key → market map, with the diagnostic probe endpoint kept around to
+  discover new keys as the tournament approaches.
+</p>
+
+<!-- ====================================================== -->
+<h2>6 · Tradeoffs</h2>
+
+<h3>6.1 Pending UI: coming-soon panel vs disabled inputs</h3>
+<p>
+  When bracket / KO lineups are in the <code>pending</code> state, two render options
+  were considered: (a) the 31 (or 4) dropdowns disabled with a banner, or (b) a
+  single coming-soon panel. Picked (b) because the dropdowns would have shown
+  team names that the user can't meaningfully assign yet (matchups unknown),
+  creating visual noise. Tradeoff: users lose the ability to preview the
+  bracket shape until it opens.
+</p>
+
+<h3>6.2 Bracket opens-at as a constant vs derived from match data</h3>
+<p>
+  Could have set bracket-opens-at to "moment the last group-stage match finishes"
+  by polling match status. Chose a hardcoded <strong>Jun 28 00:00 UTC</strong> instead
+  because (i) no data provider is wired, (ii) it's predictable, (iii) the FIFA
+  schedule is fixed and won't move. Tradeoff: if a group-stage match runs into
+  extra time and finishes after midnight UTC, the window technically opens
+  before all matchups are mathematically resolved. Acceptable for an
+  amateur-pool tournament.
+</p>
+
+<h3>6.3 Scoring legend: live values vs documented constants</h3>
+<p>
+  The <code>ScoringLegend</code> component imports <code>RULES</code> directly so the values
+  shown to users can never drift from what's actually scored. Tradeoff: every
+  scoring rule rebalance is a one-line edit in <code>rules.ts</code> and the UI
+  updates automatically — but it also means any unintended change to
+  <code>rules.ts</code> silently changes the public-facing legend.
+</p>
+
+<h3>6.4 /matches page: rollups + per-match vs split into two pages</h3>
+<p>
+  Considered splitting into <code>/matches</code> (per-match drilldown) and
+  <code>/leaderboards</code> (top scorer / clean sheet). Combined onto one page because
+  (i) the user explicitly asked for "all relevant stats... list them out" on a
+  single surface, (ii) rollups are cheap to compute alongside the match list,
+  (iii) it reduces nav surface area.
+</p>
+
+<!-- ====================================================== -->
+<h2>7 · Operational gaps (still open)</h2>
+
+<table>
+  <thead>
+    <tr><th>Gap</th><th>Impact</th><th>Action</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><span class="tag tag-gap">GAP</span><br>CF Access not in front</td>
+      <td>The deployed worker is openly accessible at <code>wc2026.followbuilders.workers.dev</code>. Anyone with the URL can create picks under a fabricated email.</td>
+      <td>README §4 documents the Zero Trust steps. ~10 min of dashboard clicking. Must happen before sharing the URL with the group.</td>
+    </tr>
+    <tr>
+      <td><span class="tag tag-gap">GAP</span><br>Old <code>wc2026-squads</code> worker</td>
+      <td>Legacy squad tracker still answers at <code>wc2026-squads.followbuilders.workers.dev</code>.</td>
+      <td>Replace with a 301 redirect to <code>/teams</code> on the new app per README §5.</td>
+    </tr>
+    <tr>
+      <td><span class="tag tag-gap">GAP</span><br>Data provider</td>
+      <td>D1 is empty of fixtures. Scoring engine has nothing to chew on. <code>/matches</code> renders the empty state.</td>
+      <td>Deferred to ~Jun 7–8 per progress.md. Choice between api-football Pro ($19/mo × ~2) or the $0 hybrid (FIFA-schedule-hardcoded + admin form).</td>
+    </tr>
+    <tr>
+      <td><span class="tag tag-gap">GAP</span><br>Days 18–19 E2E test</td>
+      <td>No test framework installed. Manual click-through has been the only verification path. Idempotency claims on the scoring engine ("re-running produces identical rows") are unverified.</td>
+      <td>Options:<br>(a) install Playwright + write 4–6 happy-path tests<br>(b) write a CI-driven script that hits the live worker + checks responses<br>(c) document a manual checklist and ship without automated coverage.</td>
+    </tr>
+    <tr>
+      <td><span class="tag tag-gap">GAP</span><br>Vestigial CF secret</td>
+      <td><code>BZZOIRO_TOKEN</code> is still configured even though the probe is deleted.</td>
+      <td><code>wrangler secret delete BZZOIRO_TOKEN</code>. Cosmetic only.</td>
+    </tr>
+    <tr>
+      <td><span class="tag tag-gap">GAP</span><br>progress.md is stale</td>
+      <td>Last updated 2026-05-20 when Day 4–5 was in progress. Says Days 6–17 are "blocked"; in reality those days have shipped.</td>
+      <td>Refresh after the data provider decision lands so the next session's pick-up doesn't waste context.</td>
+    </tr>
+  </tbody>
+</table>
+
+<!-- ====================================================== -->
+<h2>8 · Open questions for the spec author</h2>
+<ul>
+  <li>
+    <strong>E2E coverage shape.</strong> Spec says "Day 18–19 E2E test" but doesn't
+    define what counts as done. Three options laid out in §7 above — which one?
+  </li>
+  <li>
+    <strong>Scoring rebalance — keep or revert.</strong> The rebalance in
+    commit <code>893f888</code> is a design call made on the fly. Confirm it's the
+    intended end-state, or revert to the original 5/3 / 10–20–40–80–160 / 100
+    values. <em>Currently live in production.</em>
+  </li>
+  <li>
+    <strong>Bracket/lineup opens-at convention.</strong> Locked to "midnight UTC the
+    calendar day the round begins" with ~20h windows. Confirm or tune to give
+    users more time (e.g., open R16 at midnight UTC the day R32 ends instead of
+    the day R16 starts).
+  </li>
+  <li>
+    <strong>Tournament Finalist tier.</strong> Whether a user's winner pick scores
+    <code>TOURNAMENT_FINALIST</code> if their team made the Final but lost. Confirmed
+    intent during the rebalance discussion but worth double-checking before
+    Jun 11.
+  </li>
+  <li>
+    <strong>Day 18–19 deadline pressure.</strong> Ship deadline is Jun 9, currently
+    18 days out. CF Access + data provider decision both need to land before
+    that.
+  </li>
+</ul>
+
+<hr>
+<p class="small">
+  Generated 2026-05-22 from commits <code>a3f1c5e</code> → <code>893f888</code>.
+  Live deploy: <a href="https://wc2026.followbuilders.workers.dev">wc2026.followbuilders.workers.dev</a>
+  (CF Access not yet enabled).
+</p>
+
+</body>
+</html>

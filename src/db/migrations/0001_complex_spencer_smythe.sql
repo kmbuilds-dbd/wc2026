@@ -1,0 +1,1 @@
+ALTER TABLE `matches` ADD `whoscored_match_id` text;

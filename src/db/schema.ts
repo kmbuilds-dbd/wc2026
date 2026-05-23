@@ -43,6 +43,9 @@ export const matches = sqliteTable(
     status: text("status", { enum: ["scheduled", "live", "finished"] }).notNull(),
     ingestedAt: integer("ingested_at"),
     rawEvents: text("raw_events", { mode: "json" }),
+    /** WhoScored match id (from /matches/<id>/...). Used by the scraper to
+     *  re-fetch the right page on each refresh. */
+    whoscoredMatchId: text("whoscored_match_id"),
   },
   (t) => [
     index("matches_kickoff_idx").on(t.kickoffUtc),
