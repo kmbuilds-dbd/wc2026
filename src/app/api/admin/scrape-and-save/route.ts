@@ -20,6 +20,7 @@ import { matches } from "@/db/schema";
 import { scrapeMatch, FirecrawlError } from "@/lib/whoscored/scrape";
 import { scrapeAndSaveRow } from "@/lib/whoscored/scrape-and-save";
 import { resolveTeamId } from "@/lib/whoscored/name-match";
+import { recomputeAllUsers } from "@/lib/scoring/apply";
 
 export const maxDuration = 60;
 
@@ -51,7 +52,8 @@ export async function POST(request: NextRequest) {
     }
     try {
       const report = await scrapeAndSaveRow(row, db);
-      return NextResponse.json({ ok: true, report });
+      const recompute = report.written ? await recomputeAllUsers() : null;
+      return NextResponse.json({ ok: true, report, recompute });
     } catch (e) {
       if (e instanceof FirecrawlError) {
         return NextResponse.json({ ok: false, error: e.message }, { status: 502 });

@@ -23,6 +23,7 @@ import {
   type SaveReport,
 } from "@/lib/whoscored/scrape-and-save";
 import { FirecrawlError } from "@/lib/whoscored/scrape";
+import { recomputeAllUsers, type RecomputeResult } from "@/lib/scoring/apply";
 
 export const maxDuration = 240;
 
@@ -66,10 +67,18 @@ export async function POST(request: NextRequest) {
 
   const writtenCount = reports.filter((r) => r.written).length;
 
+  // Recompute the leaderboard only when at least one match flipped to
+  // finished. Otherwise no scores can have changed.
+  let recompute: RecomputeResult | null = null;
+  if (writtenCount > 0) {
+    recompute = await recomputeAllUsers();
+  }
+
   return NextResponse.json({
     ok: true,
     eligibleCount: eligible.length,
     writtenCount,
+    recompute,
     reports,
   });
 }
