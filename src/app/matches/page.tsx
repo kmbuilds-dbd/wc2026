@@ -1,4 +1,5 @@
 import { PageHeader } from "@/components/page-header";
+import { ScrapeMatchButton } from "@/components/matches/scrape-match-button";
 import { requireUser } from "@/lib/auth";
 import { getDb } from "@/db/client";
 import { matches, type Match } from "@/db/schema";
@@ -37,7 +38,7 @@ function playerLabel(id: number): string {
 }
 
 export default async function MatchesPage() {
-  await requireUser();
+  const user = await requireUser();
   const db = await getDb();
   const rows = await db.select().from(matches).orderBy(matches.kickoffUtc);
 
@@ -58,8 +59,9 @@ export default async function MatchesPage() {
             Schedule lands once the data provider is wired
           </div>
           <div className="text-xs text-text-muted mt-2 max-w-md mx-auto">
-            Once <code className="text-accent">/api/admin/seed?what=fixtures</code> runs (or
-            an admin POSTs results directly), match cards will populate below.
+            Admin: POST to <code className="text-accent">/api/admin/import-fixtures</code> to
+            seed from WhoScored (13 Firecrawl calls, ~72 group + 32 KO fixtures).
+            Add <code>{`{ "dryRun": true }`}</code> first to preview.
           </div>
         </div>
       </>
@@ -190,6 +192,7 @@ export default async function MatchesPage() {
                   key={key}
                   title={`Group ${letter}`}
                   matches={groupedByKey.get(key)!}
+                  isAdmin={user.isAdmin}
                 />
               );
             })}
@@ -203,14 +206,22 @@ export default async function MatchesPage() {
           <h2 className="font-display text-2xl text-text mb-3">
             {STAGE_LABEL[stage as Match["stage"]]}
           </h2>
-          <StageBlock matches={groupedByKey.get(stage)!} />
+          <StageBlock matches={groupedByKey.get(stage)!} isAdmin={user.isAdmin} />
         </section>
       ))}
     </>
   );
 }
 
-function StageBlock({ title, matches }: { title?: string; matches: Match[] }) {
+function StageBlock({
+  title,
+  matches,
+  isAdmin,
+}: {
+  title?: string;
+  matches: Match[];
+  isAdmin: boolean;
+}) {
   return (
     <div className="bg-surface border border-border-base rounded">
       {title && (
@@ -220,14 +231,14 @@ function StageBlock({ title, matches }: { title?: string; matches: Match[] }) {
       )}
       <div className="divide-y divide-border-base/50">
         {matches.map((m) => (
-          <MatchRow key={m.id} match={m} />
+          <MatchRow key={m.id} match={m} isAdmin={isAdmin} />
         ))}
       </div>
     </div>
   );
 }
 
-function MatchRow({ match }: { match: Match }) {
+function MatchRow({ match, isAdmin }: { match: Match; isAdmin: boolean }) {
   const events = (match.rawEvents as MatchEvent[] | null) ?? [];
   const sortedEvents = [...events].sort((a, b) => (a.minute ?? 999) - (b.minute ?? 999));
   const isFinished = match.status === "finished";
@@ -279,6 +290,9 @@ function MatchRow({ match }: { match: Match }) {
             )}
           </div>
         </details>
+      )}
+      {isAdmin && match.whoscoredMatchId && (
+        <ScrapeMatchButton matchId={match.id} />
       )}
     </div>
   );
