@@ -56,6 +56,10 @@
 		"ODDS_API_BASE_URL": "https://api.the-odds-api.com/v4",
 		"WC2026_LEAGUE_ID": "1",
 		"WC2026_SEASON": "2026",
-		"ADMIN_EMAIL": "kunmor@gmail.com"
+		"ADMIN_EMAIL": "kunmor@gmail.com",
+		// Public URL of the deployed app (used in approval emails). Set before deploying.
+		"APP_URL": "",
+		// Resend "from" address — must be a verified sender in your Resend account.
+		"RESEND_FROM_EMAIL": ""
 	}
 }

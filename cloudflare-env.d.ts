@@ -12,9 +12,12 @@ interface __BaseEnv_CloudflareEnv {
 	WC2026_LEAGUE_ID: "1";
 	WC2026_SEASON: "2026";
 	ADMIN_EMAIL: "kunmor@gmail.com";
+	APP_URL: string;
+	RESEND_FROM_EMAIL: string;
 	NEXTJS_ENV: string;
 	API_SPORTS_KEY: string;
 	ODDS_API_KEY: string;
+	RESEND_API_KEY: string;
 	WORKER_SELF_REFERENCE: Service<typeof import("./.open-next/worker").default>;
 }
 declare namespace Cloudflare {

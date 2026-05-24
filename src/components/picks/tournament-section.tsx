@@ -8,7 +8,7 @@
  * Golden Glove = single dropdown of all GKs across all 48 teams (~144 rows).
  */
 import { useMemo, useState, useTransition } from "react";
-import { saveTournamentPicks } from "@/app/picks/actions";
+import { saveTournamentPicks } from "@/app/(app)/picks/actions";
 import { teamList, teamById } from "@/lib/teams-data";
 import {
   allGoalkeepers,

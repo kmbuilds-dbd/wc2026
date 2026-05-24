@@ -3,12 +3,12 @@
 /**
  * Group-stage pick form: 12 group cards, each with 1st/2nd dropdowns.
  *
- * Server-side validation lives in @/app/picks/actions.ts → saveGroupPicks.
+ * Server-side validation lives in @/app/(app)/picks/actions.ts → saveGroupPicks.
  * Client side enforces the same "don't pick the same team for 1st and 2nd"
  * rule by greying out already-selected options.
  */
 import { useState, useTransition } from "react";
-import { saveGroupPicks } from "@/app/picks/actions";
+import { saveGroupPicks } from "@/app/(app)/picks/actions";
 import { groupLetters, teamsInGroup, type UiTeam } from "@/lib/teams-data";
 import { SectionHeader, SaveBar } from "./shared";
 

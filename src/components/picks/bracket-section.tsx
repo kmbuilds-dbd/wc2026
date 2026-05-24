@@ -13,7 +13,7 @@
  * resolved matchup (e.g. "R32 #1 = winner of Group A vs best-3rd from CDEF").
  */
 import { useMemo, useState, useTransition } from "react";
-import { saveBracketPicks } from "@/app/picks/actions";
+import { saveBracketPicks } from "@/app/(app)/picks/actions";
 import { teamList } from "@/lib/teams-data";
 import {
   BRACKET_SLOT_COUNT,

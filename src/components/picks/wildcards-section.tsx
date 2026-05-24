@@ -8,7 +8,7 @@
  * same rule.
  */
 import { useMemo, useState, useTransition } from "react";
-import { saveWildcardPicks } from "@/app/picks/actions";
+import { saveWildcardPicks } from "@/app/(app)/picks/actions";
 import { teamList } from "@/lib/teams-data";
 import { SectionHeader, SaveBar } from "./shared";
 

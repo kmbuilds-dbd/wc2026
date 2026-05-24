@@ -6,7 +6,7 @@
  * team via <optgroup> for findability.
  */
 import { useMemo, useState, useTransition } from "react";
-import { saveLineupPicks } from "@/app/picks/actions";
+import { saveLineupPicks } from "@/app/(app)/picks/actions";
 import type { LineupRound } from "@/lib/locks";
 import { playerList, type UiPlayer, type PlayerPosition } from "@/lib/players-data";
 import { teamById } from "@/lib/teams-data";
