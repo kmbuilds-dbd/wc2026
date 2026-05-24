@@ -57,9 +57,8 @@
 		"WC2026_LEAGUE_ID": "1",
 		"WC2026_SEASON": "2026",
 		"ADMIN_EMAIL": "kunmor@gmail.com",
-		// Public URL of the deployed app (used in approval emails). Set before deploying.
-		"APP_URL": "",
-		// Resend "from" address — must be a verified sender in your Resend account.
-		"RESEND_FROM_EMAIL": ""
+		// UUID shared privately with group members — anyone with it can join.
+		// Generate one with: node -e "console.log(crypto.randomUUID())"
+		"INVITE_CODE": "replace-with-your-uuid"
 	}
 }

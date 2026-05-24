@@ -4,10 +4,10 @@ import { getAccessStatus } from "@/lib/access";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const email = await getUserEmail();
-  if (!email) redirect("/request-access");
+  if (!email) redirect("/join");
 
   const status = await getAccessStatus(email);
-  if (status !== "approved") redirect("/request-access");
+  if (status !== "approved") redirect("/join");
 
   return <>{children}</>;
 }
