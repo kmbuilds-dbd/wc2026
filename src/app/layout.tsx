@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Bebas_Neue, DM_Sans, DM_Mono } from "next/font/google";
+import { NavBar } from "@/components/nav-bar";
 import "./globals.css";
 
 const bebas = Bebas_Neue({
@@ -47,23 +48,7 @@ export default function RootLayout({
               Pick&apos;em
             </span>
           </a>
-          <nav className="font-mono text-[11px] uppercase tracking-[0.12em] flex flex-wrap gap-4 text-text-muted">
-            <a href="/picks" className="hover:text-accent">
-              Picks
-            </a>
-            <a href="/matches" className="hover:text-accent">
-              Matches
-            </a>
-            <a href="/leaderboard" className="hover:text-accent">
-              Leaderboard
-            </a>
-            <a href="/teams" className="hover:text-accent">
-              Teams
-            </a>
-            <a href="/odds" className="hover:text-accent">
-              Odds
-            </a>
-          </nav>
+          <NavBar />
         </header>
         <main className="flex-1 px-5 py-8 max-w-[1400px] mx-auto w-full">
           {children}
