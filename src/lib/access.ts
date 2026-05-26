@@ -3,11 +3,9 @@ import { getCloudflareContext } from "@opennextjs/cloudflare";
 export type AccessStatus = "approved" | "none";
 
 export async function getAccessStatus(email: string): Promise<AccessStatus> {
-  const { env } = await getCloudflareContext({ async: true });
-
-  if (env.ADMIN_EMAIL?.toLowerCase() === email.toLowerCase()) return "approved";
-
   try {
+    const { env } = await getCloudflareContext({ async: true });
+    if (env.ADMIN_EMAIL?.toLowerCase() === email.toLowerCase()) return "approved";
     const approved = await env.CACHE.get(`wc26:approved:${email}`);
     return approved ? "approved" : "none";
   } catch {
