@@ -50,3 +50,12 @@ body {
   background: var(--color-confirmed);
   animation: wc-live-pulse 2s infinite;
 }
+
+/* Keep Clerk's Google button readable on hover */
+.cl-socialButtonsBlockButton:hover {
+  background-color: #f3f4f6 !important;
+  color: #111827 !important;
+}
+.cl-socialButtonsBlockButtonText:hover {
+  color: #111827 !important;
+}

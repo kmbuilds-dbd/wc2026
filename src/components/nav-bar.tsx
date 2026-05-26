@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { SignOutButton } from "@clerk/nextjs";
+import { SignOutButton, useUser } from "@clerk/nextjs";
 
 const NAV_LINKS = [
   { href: "/picks", label: "Picks" },
@@ -13,6 +13,9 @@ const NAV_LINKS = [
 
 export function NavBar() {
   const pathname = usePathname();
+  const { user } = useUser();
+  const email = user?.emailAddresses[0]?.emailAddress;
+
   return (
     <nav className="font-mono text-[11px] uppercase tracking-[0.12em] flex flex-wrap gap-4 text-text-muted">
       {NAV_LINKS.map(({ href, label }) => {
@@ -27,8 +30,11 @@ export function NavBar() {
           </a>
         );
       })}
+      {email && (
+        <span className="text-text-dim normal-case tracking-normal ml-auto">{email}</span>
+      )}
       <SignOutButton redirectUrl="/join">
-        <button className="hover:text-accent ml-auto cursor-pointer bg-transparent border-0 p-0 font-mono text-[11px] uppercase tracking-[0.12em] text-text-muted">
+        <button className="hover:text-accent cursor-pointer bg-transparent border-0 p-0 font-mono text-[11px] uppercase tracking-[0.12em] text-text-muted">
           Sign out
         </button>
       </SignOutButton>
