@@ -5,6 +5,7 @@ import { getAccessStatus, approveAccess } from "@/lib/access";
 
 export const dynamic = "force-dynamic";
 
+// GET — handles redirect from the old CF-Access-authenticated flow (still works if CF Access is enforcing)
 export async function GET(request: NextRequest) {
   const code = request.nextUrl.searchParams.get("code");
   const email = await getUserEmail();
@@ -20,6 +21,28 @@ export async function GET(request: NextRequest) {
 
   if (!code) {
     return NextResponse.redirect(new URL("/join", request.url));
+  }
+
+  const { env } = await getCloudflareContext({ async: true });
+  const inviteCode = (env as unknown as { INVITE_CODE?: string }).INVITE_CODE;
+  if (!inviteCode || code !== inviteCode) {
+    return NextResponse.redirect(new URL("/join?error=invalid", request.url));
+  }
+
+  await approveAccess(email);
+  return grantSession(email, new URL("/", request.url));
+}
+
+// POST — handles the email form submission from /join
+export async function POST(request: NextRequest) {
+  const formData = await request.formData();
+  const email = formData.get("email")?.toString().toLowerCase().trim();
+  const code = formData.get("code")?.toString();
+
+  if (!email || !email.includes("@")) {
+    return NextResponse.redirect(
+      new URL(`/join?code=${encodeURIComponent(code ?? "")}&error=email`, request.url)
+    );
   }
 
   const { env } = await getCloudflareContext({ async: true });
