@@ -45,8 +45,10 @@ export async function getUserEmail(): Promise<string | null> {
   const devEmail = h.get("x-dev-user-email");
   if (devEmail) return devEmail.toLowerCase();
 
+  // ADMIN_EMAIL fallback only applies in local dev (NEXTJS_ENV is set via
+  // .dev.vars; it is absent from wrangler.jsonc so it's never set in prod).
   const { env } = await getCloudflareContext({ async: true });
-  if (env.ADMIN_EMAIL) return env.ADMIN_EMAIL.toLowerCase();
+  if (env.NEXTJS_ENV && env.ADMIN_EMAIL) return env.ADMIN_EMAIL.toLowerCase();
 
   return null;
 }
