@@ -20,17 +20,33 @@ export async function getUserEmail(): Promise<string | null> {
   }
 }
 
+function resolveDisplayName(clerkUser: Awaited<ReturnType<typeof currentUser>>, email: string): string {
+  const first = clerkUser?.firstName?.trim();
+  const last = clerkUser?.lastName?.trim();
+  if (first || last) return [first, last].filter(Boolean).join(" ");
+  return email;
+}
+
 export async function requireUser(): Promise<User> {
-  const email = await getUserEmail();
+  const clerkUser = await currentUser();
+  const email = clerkUser?.emailAddresses[0]?.emailAddress?.toLowerCase();
   if (!email) throw new UnauthenticatedError();
 
+  const displayName = resolveDisplayName(clerkUser, email);
   const db = await getDb();
+
   const existing = await db.select().from(users).where(eq(users.email, email)).get();
-  if (existing) return existing;
+  if (existing) {
+    // Keep display name in sync if Clerk profile has a better one.
+    if (existing.displayName !== displayName) {
+      await db.update(users).set({ displayName }).where(eq(users.email, email));
+      return { ...existing, displayName };
+    }
+    return existing;
+  }
 
   const { env } = await getCloudflareContext({ async: true });
   const isAdmin = env.ADMIN_EMAIL?.toLowerCase() === email;
-  const displayName = email.split("@")[0] ?? email;
   const now = Math.floor(Date.now() / 1000);
 
   return db
