@@ -16,6 +16,17 @@ const SIGN_IN_APPEARANCE = {
     colorDanger: "#f87171",
     borderRadius: "0.375rem",
   },
+  elements: {
+    socialButtonsBlockButton: {
+      backgroundColor: "#ffffff",
+      border: "1px solid #d1d5db",
+      color: "#111827",
+    },
+    socialButtonsBlockButtonText: {
+      color: "#111827",
+      fontWeight: "500",
+    },
+  },
 };
 
 export default async function JoinPage({
