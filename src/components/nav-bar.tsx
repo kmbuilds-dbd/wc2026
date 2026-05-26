@@ -26,6 +26,9 @@ export function NavBar() {
           </a>
         );
       })}
+      <a href="/api/auth/signout" className="hover:text-accent ml-auto">
+        Sign out
+      </a>
     </nav>
   );
 }
