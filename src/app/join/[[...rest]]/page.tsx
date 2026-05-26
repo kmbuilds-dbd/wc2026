@@ -6,12 +6,37 @@ import { getAccessStatus, approveAccess } from "@/lib/access";
 
 export const dynamic = "force-dynamic";
 
+const SIGN_IN_APPEARANCE = {
+  variables: {
+    colorBackground: "#0d0d1a",
+    colorInputBackground: "#080810",
+    colorText: "#e8e8f0",
+    colorTextSecondary: "#888",
+    colorPrimary: "#f7c325",
+    colorDanger: "#f87171",
+    borderRadius: "0.375rem",
+  },
+};
+
 export default async function JoinPage({
+  params,
   searchParams,
 }: {
+  params: Promise<{ rest?: string[] }>;
   searchParams: Promise<{ code?: string }>;
 }) {
+  const { rest } = await params;
   const { code } = await searchParams;
+
+  // Sub-paths are Clerk's internal steps (SSO callback, MFA, etc.) — just render.
+  if (rest?.length) {
+    return (
+      <div className="flex justify-center mt-24">
+        <SignIn appearance={SIGN_IN_APPEARANCE} />
+      </div>
+    );
+  }
+
   const { userId } = await auth();
 
   if (userId) {
@@ -48,17 +73,7 @@ export default async function JoinPage({
         {code ? (
           <SignIn
             forceRedirectUrl={`/join?code=${encodeURIComponent(code)}`}
-            appearance={{
-              variables: {
-                colorBackground: "#0d0d1a",
-                colorInputBackground: "#080810",
-                colorText: "#e8e8f0",
-                colorTextSecondary: "#888",
-                colorPrimary: "#f7c325",
-                colorDanger: "#f87171",
-                borderRadius: "0.375rem",
-              },
-            }}
+            appearance={SIGN_IN_APPEARANCE}
           />
         ) : (
           <div className="border border-border-base rounded-lg p-6 w-full">
