@@ -8,7 +8,7 @@ export async function getAccessStatus(email: string): Promise<AccessStatus> {
   if (env.ADMIN_EMAIL?.toLowerCase() === email.toLowerCase()) return "approved";
 
   try {
-    const approved = await env.CACHE.get(`access:approved:${email}`);
+    const approved = await env.CACHE.get(`wc26:approved:${email}`);
     return approved ? "approved" : "none";
   } catch {
     return "none";
@@ -17,5 +17,5 @@ export async function getAccessStatus(email: string): Promise<AccessStatus> {
 
 export async function approveAccess(email: string): Promise<void> {
   const { env } = await getCloudflareContext({ async: true });
-  await env.CACHE.put(`access:approved:${email}`, new Date().toISOString());
+  await env.CACHE.put(`wc26:approved:${email}`, new Date().toISOString());
 }
