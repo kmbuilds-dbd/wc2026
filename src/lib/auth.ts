@@ -38,19 +38,23 @@ export class UnauthenticatedError extends Error {
  * Returns null only if ADMIN_EMAIL is also unset.
  */
 export async function getUserEmail(): Promise<string | null> {
-  const h = await headers();
-  const accessEmail = h.get("cf-access-authenticated-user-email");
-  if (accessEmail) return accessEmail.toLowerCase();
+  try {
+    const h = await headers();
+    const accessEmail = h.get("cf-access-authenticated-user-email");
+    if (accessEmail) return accessEmail.toLowerCase();
 
-  const devEmail = h.get("x-dev-user-email");
-  if (devEmail) return devEmail.toLowerCase();
+    const devEmail = h.get("x-dev-user-email");
+    if (devEmail) return devEmail.toLowerCase();
 
-  // ADMIN_EMAIL fallback only applies in local dev (NEXTJS_ENV is set via
-  // .dev.vars; it is absent from wrangler.jsonc so it's never set in prod).
-  const { env } = await getCloudflareContext({ async: true });
-  if (env.NEXTJS_ENV && env.ADMIN_EMAIL) return env.ADMIN_EMAIL.toLowerCase();
+    // ADMIN_EMAIL fallback only applies in local dev (NEXTJS_ENV is set via
+    // .dev.vars; it is absent from wrangler.jsonc so it's never set in prod).
+    const { env } = await getCloudflareContext({ async: true });
+    if (env.NEXTJS_ENV && env.ADMIN_EMAIL) return env.ADMIN_EMAIL.toLowerCase();
 
-  return null;
+    return null;
+  } catch {
+    return null;
+  }
 }
 
 /**
