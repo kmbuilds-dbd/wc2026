@@ -1,18 +1,37 @@
+import { auth, currentUser } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
-import { cookies } from "next/headers";
+import { SignIn } from "@clerk/nextjs";
+import { getCloudflareContext } from "@opennextjs/cloudflare";
+import { getAccessStatus, approveAccess } from "@/lib/access";
 
 export const dynamic = "force-dynamic";
 
 export default async function JoinPage({
   searchParams,
 }: {
-  searchParams: Promise<{ code?: string; error?: string }>;
+  searchParams: Promise<{ code?: string }>;
 }) {
-  const { code, error } = await searchParams;
+  const { code } = await searchParams;
+  const { userId } = await auth();
 
-  // Already have a session — skip the form
-  const jar = await cookies();
-  if (jar.has("wc_email")) redirect("/");
+  if (userId) {
+    const clerkUser = await currentUser();
+    const email = clerkUser?.emailAddresses[0]?.emailAddress?.toLowerCase();
+
+    if (email) {
+      const status = await getAccessStatus(email);
+      if (status === "approved") redirect("/");
+
+      if (code) {
+        const { env } = await getCloudflareContext({ async: true });
+        const inviteCode = (env as unknown as { INVITE_CODE?: string }).INVITE_CODE;
+        if (inviteCode && code === inviteCode) {
+          await approveAccess(email);
+          redirect("/");
+        }
+      }
+    }
+  }
 
   return (
     <div className="max-w-md mx-auto mt-24 space-y-8">
@@ -25,38 +44,28 @@ export default async function JoinPage({
         </p>
       </div>
 
-      <div className="border border-border-base rounded-lg p-6 space-y-4">
+      <div className="flex flex-col items-center">
         {code ? (
-          <>
-            <p className="text-sm text-text-muted">Enter your email to join the group.</p>
-            {error === "email" && (
-              <p className="text-sm text-danger">Please enter a valid email address.</p>
-            )}
-            {error === "invalid" && (
-              <p className="text-sm text-danger">That invite link isn&apos;t valid.</p>
-            )}
-            <form method="POST" action="/api/access/join" className="flex flex-col gap-3">
-              <input type="hidden" name="code" value={code} />
-              <input
-                type="email"
-                name="email"
-                required
-                autoFocus
-                placeholder="you@example.com"
-                className="w-full bg-bg border border-border-base rounded px-3 py-2 text-sm text-text placeholder:text-text-dim focus:outline-none focus:border-accent"
-              />
-              <button
-                type="submit"
-                className="w-full bg-accent text-bg font-mono text-[11px] uppercase tracking-[0.15em] py-2 rounded hover:opacity-90 transition-opacity"
-              >
-                Join
-              </button>
-            </form>
-          </>
+          <SignIn
+            forceRedirectUrl={`/join?code=${encodeURIComponent(code)}`}
+            appearance={{
+              variables: {
+                colorBackground: "#0d0d1a",
+                colorInputBackground: "#080810",
+                colorText: "#e8e8f0",
+                colorTextSecondary: "#888",
+                colorPrimary: "#f7c325",
+                colorDanger: "#f87171",
+                borderRadius: "0.375rem",
+              },
+            }}
+          />
         ) : (
-          <p className="text-sm text-text-muted">
-            You need the invite link to join this group.
-          </p>
+          <div className="border border-border-base rounded-lg p-6 w-full">
+            <p className="text-sm text-text-muted">
+              You need the invite link to join this group.
+            </p>
+          </div>
         )}
       </div>
     </div>

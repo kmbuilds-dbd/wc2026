@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Bebas_Neue, DM_Sans, DM_Mono } from "next/font/google";
+import { ClerkProvider } from "@clerk/nextjs";
 import { NavBar } from "@/components/nav-bar";
 import "./globals.css";
 
@@ -34,6 +35,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
+    <ClerkProvider>
     <html
       lang="en"
       className={`${bebas.variable} ${dmSans.variable} ${dmMono.variable} h-full antialiased`}
@@ -58,5 +60,6 @@ export default function RootLayout({
         </footer>
       </body>
     </html>
+    </ClerkProvider>
   );
 }

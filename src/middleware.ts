@@ -1,26 +1,12 @@
-import { NextRequest, NextResponse } from "next/server";
+import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 
-// Runs before every request. The only gate needed: a wc_email cookie,
-// which /join sets after verifying the invite code.
-export function middleware(request: NextRequest) {
-  const { pathname } = request.nextUrl;
+const isPublicRoute = createRouteMatcher(["/join(.*)", "/api/(.*)"]);
 
-  // Public paths — no cookie required.
-  if (
-    pathname.startsWith("/_next") ||
-    pathname.startsWith("/api/") ||
-    pathname.startsWith("/join") ||
-    pathname === "/favicon.ico"
-  ) {
-    return NextResponse.next();
+export default clerkMiddleware(async (auth, request) => {
+  if (!isPublicRoute(request)) {
+    await auth.protect();
   }
-
-  if (!request.cookies.has("wc_email")) {
-    return NextResponse.redirect(new URL("/join", request.url));
-  }
-
-  return NextResponse.next();
-}
+});
 
 export const config = {
   matcher: ["/((?!_next/static|_next/image|favicon\\.ico).*)"],

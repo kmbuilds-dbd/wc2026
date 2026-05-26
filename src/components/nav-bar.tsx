@@ -1,6 +1,7 @@
 "use client";
 
 import { usePathname } from "next/navigation";
+import { SignOutButton } from "@clerk/nextjs";
 
 const NAV_LINKS = [
   { href: "/picks", label: "Picks" },
@@ -26,9 +27,11 @@ export function NavBar() {
           </a>
         );
       })}
-      <a href="/api/auth/signout" className="hover:text-accent ml-auto">
-        Sign out
-      </a>
+      <SignOutButton redirectUrl="/join">
+        <button className="hover:text-accent ml-auto cursor-pointer bg-transparent border-0 p-0 font-mono text-[11px] uppercase tracking-[0.12em] text-text-muted">
+          Sign out
+        </button>
+      </SignOutButton>
     </nav>
   );
 }
