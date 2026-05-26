@@ -1,57 +1,33 @@
 import { redirect } from "next/navigation";
-import { cookies } from "next/headers";
-import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { getUserEmail } from "@/lib/auth";
-import { getAccessStatus, approveAccess } from "@/lib/access";
+import { getAccessStatus } from "@/lib/access";
 
-async function grantSession(email: string) {
-  const jar = await cookies();
-  jar.set("wc_email", email, {
-    httpOnly: true,
-    secure: true,
-    sameSite: "lax",
-    maxAge: 60 * 60 * 24 * 30, // 30 days
-    path: "/",
-  });
-  redirect("/");
-}
+export const dynamic = "force-dynamic";
 
 export default async function JoinPage({
   searchParams,
 }: {
-  searchParams: Promise<{ code?: string }>;
+  searchParams: Promise<{ code?: string; error?: string }>;
 }) {
-  const { code } = await searchParams;
-  const email = await getUserEmail();
+  const { code, error } = await searchParams;
 
-  // Already approved — refresh the cookie and send them in.
+  if (code) {
+    redirect(`/api/access/join?code=${encodeURIComponent(code)}`);
+  }
+
+  const email = await getUserEmail();
   if (email) {
     const status = await getAccessStatus(email);
-    if (status === "approved") await grantSession(email);
+    if (status === "approved") {
+      redirect("/api/access/join");
+    }
   }
 
-  // No code — show the "you need the link" screen.
-  if (!code) {
-    return <Shell email={email} message="You need the invite link to join this group." />;
-  }
+  const message =
+    error === "invalid"
+      ? "That invite link isn't valid."
+      : "You need the invite link to join this group.";
 
-  // Verify code.
-  const { env } = await getCloudflareContext({ async: true });
-  const inviteCode = (env as unknown as { INVITE_CODE?: string }).INVITE_CODE;
-  if (!inviteCode || code !== inviteCode) {
-    return <Shell email={email} message="That invite link isn't valid." />;
-  }
-
-  // No email — CF Access hasn't authenticated yet (shouldn't happen in prod).
-  if (!email) {
-    return <Shell email={null} message="Authenticate first, then open your invite link." />;
-  }
-
-  await approveAccess(email);
-  await grantSession(email);
-}
-
-function Shell({ email, message }: { email: string | null; message: string }) {
   return (
     <div className="max-w-md mx-auto mt-24 space-y-8">
       <div className="text-center space-y-2">
@@ -63,9 +39,9 @@ function Shell({ email, message }: { email: string | null; message: string }) {
         </p>
       </div>
 
-      <div className="border border-border-base rounded-lg p-6 space-y-3">
+      <div className="border border-border-base rounded-lg p-6">
         {email && (
-          <p className="text-sm text-text-muted">
+          <p className="text-sm text-text-muted mb-2">
             Signed in as <span className="text-text font-mono text-xs">{email}</span>
           </p>
         )}

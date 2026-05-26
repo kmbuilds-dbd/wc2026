@@ -1,15 +1,10 @@
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { getUserEmail } from "@/lib/auth";
-import { getAccessStatus } from "@/lib/access";
 
 export const dynamic = "force-dynamic";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
-  const email = await getUserEmail();
-  if (!email) redirect("/join");
-
-  const status = await getAccessStatus(email);
-  if (status !== "approved") redirect("/join");
-
+  const cookieStore = await cookies();
+  if (!cookieStore.has("wc_email")) redirect("/join");
   return <>{children}</>;
 }
