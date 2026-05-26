@@ -59,6 +59,6 @@
 		"ADMIN_EMAIL": "kunmor@gmail.com",
 		// UUID shared privately with group members — anyone with it can join.
 		// Generate one with: node -e "console.log(crypto.randomUUID())"
-		"INVITE_CODE": "replace-with-your-uuid"
+		"INVITE_CODE": "8f15118f-e878-42fd-879c-d35f632d4873"
 	}
 }
