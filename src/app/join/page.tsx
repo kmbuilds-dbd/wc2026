@@ -1,7 +1,20 @@
 import { redirect } from "next/navigation";
+import { cookies } from "next/headers";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { getUserEmail } from "@/lib/auth";
 import { getAccessStatus, approveAccess } from "@/lib/access";
+
+async function grantSession(email: string) {
+  const jar = await cookies();
+  jar.set("wc_email", email, {
+    httpOnly: true,
+    secure: true,
+    sameSite: "lax",
+    maxAge: 60 * 60 * 24 * 30, // 30 days
+    path: "/",
+  });
+  redirect("/");
+}
 
 export default async function JoinPage({
   searchParams,
@@ -11,10 +24,10 @@ export default async function JoinPage({
   const { code } = await searchParams;
   const email = await getUserEmail();
 
-  // Already approved — send them in.
+  // Already approved — refresh the cookie and send them in.
   if (email) {
     const status = await getAccessStatus(email);
-    if (status === "approved") redirect("/");
+    if (status === "approved") await grantSession(email);
   }
 
   // No code — show the "you need the link" screen.
@@ -35,7 +48,7 @@ export default async function JoinPage({
   }
 
   await approveAccess(email);
-  redirect("/");
+  await grantSession(email);
 }
 
 function Shell({ email, message }: { email: string | null; message: string }) {
