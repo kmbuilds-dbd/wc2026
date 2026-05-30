@@ -15,6 +15,7 @@
  * Returns a small status object; we revalidate the path for SSR refresh.
  */
 import { revalidatePath } from "next/cache";
+import { eq, sql } from "drizzle-orm";
 import { getDb } from "@/db/client";
 import {
   groupPicks,
@@ -30,6 +31,7 @@ import { groupLetters, teamById } from "@/lib/teams-data";
 import { playerById } from "@/lib/players-data";
 import { BRACKET_SLOTS, isValidSlot } from "@/lib/bracket-shape";
 import { computeAliveTeamsFromMatches } from "@/lib/scoring/alive";
+import { buildBracketMatchups } from "@/lib/bracket-matchups";
 
 export type ActionResult =
   | { ok: true; saved: number }
@@ -79,6 +81,7 @@ export async function saveGroupPicks(formData: FormData): Promise<ActionResult> 
 
   // Reject same team picked for both 1st and 2nd in a single group.
   const seen = new Set<string>();
+  const groupTopTwoTeamIds = new Set<number>();
   for (const r of rows) {
     const k = `${r.groupLetter}:${r.teamId}`;
     if (seen.has(k)) {
@@ -88,18 +91,24 @@ export async function saveGroupPicks(formData: FormData): Promise<ActionResult> 
       };
     }
     seen.add(k);
+    groupTopTwoTeamIds.add(r.teamId);
   }
 
   const db = await getDb();
-  for (const r of rows) {
-    await db
-      .insert(groupPicks)
-      .values(r)
-      .onConflictDoUpdate({
-        target: [groupPicks.userEmail, groupPicks.groupLetter, groupPicks.rank],
-        set: { teamId: r.teamId, updatedAt: r.updatedAt },
-      });
+  const existingWildcards = await db
+    .select()
+    .from(wildcardPicks)
+    .where(eq(wildcardPicks.userEmail, user.email));
+  const conflictingWildcard = existingWildcards.find((p) => groupTopTwoTeamIds.has(p.teamId));
+  if (conflictingWildcard) {
+    return {
+      ok: false,
+      error: `${teamById.get(conflictingWildcard.teamId)!.name} is already used as a wildcard pick. Remove it from wildcards before using it in your group top 2.`,
+    };
   }
+
+  await db.delete(groupPicks).where(eq(groupPicks.userEmail, user.email));
+  for (const r of rows) await db.insert(groupPicks).values(r);
 
   revalidatePath("/picks");
   return { ok: true, saved: rows.length };
@@ -135,15 +144,21 @@ export async function saveWildcardPicks(formData: FormData): Promise<ActionResul
   }
 
   const db = await getDb();
-  for (const r of rows) {
-    await db
-      .insert(wildcardPicks)
-      .values(r)
-      .onConflictDoUpdate({
-        target: [wildcardPicks.userEmail, wildcardPicks.slot],
-        set: { teamId: r.teamId, updatedAt: r.updatedAt },
-      });
+  const existingGroupPicks = await db
+    .select()
+    .from(groupPicks)
+    .where(eq(groupPicks.userEmail, user.email));
+  const groupTopTwoTeamIds = new Set(existingGroupPicks.map((p) => p.teamId));
+  const conflictingGroupPick = rows.find((p) => groupTopTwoTeamIds.has(p.teamId));
+  if (conflictingGroupPick) {
+    return {
+      ok: false,
+      error: `${teamById.get(conflictingGroupPick.teamId)!.name} is already used in your group top 2 and cannot also be a wildcard pick.`,
+    };
   }
+
+  await db.delete(wildcardPicks).where(eq(wildcardPicks.userEmail, user.email));
+  for (const r of rows) await db.insert(wildcardPicks).values(r);
 
   revalidatePath("/picks");
   return { ok: true, saved: rows.length };
@@ -173,6 +188,23 @@ export async function saveBracketPicks(formData: FormData): Promise<ActionResult
   }
 
   const db = await getDb();
+  const knockoutMatches = await db
+    .select()
+    .from(matches)
+    .where(sql`${matches.stage} != 'group'`)
+    .orderBy(matches.kickoffUtc, matches.id);
+  const matchupBySlot = new Map(buildBracketMatchups(knockoutMatches).map((m) => [m.slot, m]));
+  for (const r of rows) {
+    const matchup = matchupBySlot.get(r.matchSlot);
+    if (!matchup || matchup.homeTeamId == null || matchup.awayTeamId == null) continue;
+    if (r.teamId !== matchup.homeTeamId && r.teamId !== matchup.awayTeamId) {
+      return {
+        ok: false,
+        error: `${teamById.get(r.teamId)!.name} is not in ${r.matchSlot}'s resolved matchup.`,
+      };
+    }
+  }
+
   for (const r of rows) {
     await db
       .insert(bracketPicks)
@@ -197,6 +229,9 @@ export async function saveLineupPicks(
   formData: FormData,
 ): Promise<ActionResult> {
   const user = await requireUser();
+  if (round === "group") {
+    return { ok: false, error: "Lineup picks open at the knockout stage." };
+  }
   if (await isLocked("lineup", round)) {
     return { ok: false, error: `${round.toUpperCase()} lineup is locked.` };
   }
@@ -275,6 +310,18 @@ export async function saveTournamentPicks(formData: FormData): Promise<ActionRes
 
   if (winnerTeamId !== null && !teamById.has(winnerTeamId)) {
     return { ok: false, error: "Invalid winner team." };
+  }
+  if (topScorerPlayerId !== null && !playerById.has(topScorerPlayerId)) {
+    return { ok: false, error: "Invalid top scorer player." };
+  }
+  if (goldenGlovePlayerId !== null) {
+    const player = playerById.get(goldenGlovePlayerId);
+    if (!player) {
+      return { ok: false, error: "Invalid Golden Glove player." };
+    }
+    if (player.position !== "GK") {
+      return { ok: false, error: `${player.name} is not a goalkeeper.` };
+    }
   }
 
   const db = await getDb();

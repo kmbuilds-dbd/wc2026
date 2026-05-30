@@ -4,33 +4,53 @@
  * Wildcards section: 8 picks for which best-3rd-place teams advance to R32.
  *
  * Each slot is a 48-team dropdown that excludes teams already picked in the
- * other 7 slots, so the user can't duplicate. Server action enforces the
- * same rule.
+ * other 7 slots, and also excludes teams already used as group top-2 picks.
+ * Server action enforces the same rules.
  */
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { saveWildcardPicks } from "@/app/(app)/picks/actions";
-import { teamList } from "@/lib/teams-data";
+import { teamById, teamList } from "@/lib/teams-data";
 import { SectionHeader, SaveBar } from "./shared";
 
 interface Props {
   /** existing picks: { 1: teamId, 2: teamId, ... 8: teamId } */
   initial: Record<number, number>;
   locked: boolean;
+  groupTopTwoTeamIds: number[];
 }
 
-export function WildcardsSection({ initial, locked }: Props) {
+export function WildcardsSection({ initial, locked, groupTopTwoTeamIds }: Props) {
   const [picks, setPicks] = useState<Record<number, number | null>>(() => {
     const out: Record<number, number | null> = {};
     for (let slot = 1; slot <= 8; slot++) out[slot] = initial[slot] ?? null;
     return out;
   });
+  const [reservedTeamIds, setReservedTeamIds] = useState(() => new Set(groupTopTwoTeamIds));
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
+  useEffect(() => {
+    function onGroupPicksChange(event: Event) {
+      const ids = (event as CustomEvent<number[]>).detail ?? [];
+      setReservedTeamIds(new Set(ids));
+    }
+
+    window.addEventListener("wc2026:group-picks-change", onGroupPicksChange);
+    return () => window.removeEventListener("wc2026:group-picks-change", onGroupPicksChange);
+  }, []);
+
   const takenIds = useMemo(
     () => new Set(Object.values(picks).filter((v): v is number => v !== null)),
     [picks],
+  );
+  const reservedNames = useMemo(
+    () =>
+      Array.from(reservedTeamIds)
+        .map((id) => teamById.get(id)?.name)
+        .filter((name): name is string => Boolean(name))
+        .join(", "),
+    [reservedTeamIds],
   );
 
   const completed = takenIds.size;
@@ -59,10 +79,16 @@ export function WildcardsSection({ initial, locked }: Props) {
       <SectionHeader
         eyebrow="Section 2 of 4"
         title="Wildcard picks"
-        subtitle="Pick the 8 best 3rd-place teams that advance to the Round of 32."
+        subtitle="Pick the 8 best 3rd-place teams that advance. Teams picked top 2 in groups cannot be used here."
         completed={completed}
         total={8}
       />
+      {reservedNames ? (
+        <div className="mb-3 rounded border border-border-base bg-surface px-3 py-2 font-mono text-[10px] uppercase tracking-[0.08em] text-text-muted">
+          Unavailable because they are group top-2 picks:{" "}
+          <span className="text-text normal-case tracking-normal">{reservedNames}</span>
+        </div>
+      ) : null}
       <form onSubmit={onSubmit}>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {[1, 2, 3, 4, 5, 6, 7, 8].map((slot) => {
@@ -82,9 +108,13 @@ export function WildcardsSection({ initial, locked }: Props) {
                     <option
                       key={t.id}
                       value={t.id}
-                      disabled={takenIds.has(t.id) && t.id !== current}
+                      disabled={
+                        reservedTeamIds.has(t.id) ||
+                        (takenIds.has(t.id) && t.id !== current)
+                      }
                     >
                       {t.flag} {t.name} (Group {t.groupLetter})
+                      {reservedTeamIds.has(t.id) ? " — group top 2" : ""}
                     </option>
                   ))}
                 </select>

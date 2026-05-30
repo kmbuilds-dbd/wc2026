@@ -2,7 +2,7 @@
 
 /**
  * Admin-only button on /teams that POSTs to /api/admin/refresh-squads.
- * The endpoint pulls from the legacy worker's /teams.json and caches in KV.
+ * The endpoint runs the squad update flow and caches results in KV.
  * After success, force a hard reload so the page re-renders from KV.
  */
 import { useState } from "react";
@@ -10,7 +10,7 @@ import { useState } from "react";
 type State =
   | { kind: "idle" }
   | { kind: "loading" }
-  | { kind: "success"; teams: number }
+  | { kind: "success"; teams: number; changed: number }
   | { kind: "error"; message: string };
 
 export function RefreshSquadsButton() {
@@ -23,6 +23,7 @@ export function RefreshSquadsButton() {
       const body = (await res.json().catch(() => ({}))) as {
         ok?: boolean;
         teams?: number;
+        changed?: number;
         error?: string;
       };
       if (!res.ok || !body.ok) {
@@ -32,7 +33,7 @@ export function RefreshSquadsButton() {
         });
         return;
       }
-      setState({ kind: "success", teams: body.teams ?? 0 });
+      setState({ kind: "success", teams: body.teams ?? 0, changed: body.changed ?? 0 });
       // Hard reload so the server reads the freshly-cached KV value.
       setTimeout(() => window.location.reload(), 800);
     } catch (e) {
@@ -47,7 +48,7 @@ export function RefreshSquadsButton() {
     <div className="flex items-center gap-3">
       {state.kind === "success" && (
         <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-confirmed">
-          ✓ {state.teams} teams · reloading…
+          ✓ {state.changed} changed · {state.teams} teams · reloading…
         </span>
       )}
       {state.kind === "error" && (

@@ -3,16 +3,14 @@
  *
  * Body (optional): { dryRun?: boolean }
  *
- * Runs discoverAllWcFixtures(), maps each scraped fixture to our team_ids
- * and stage enum, then upserts into D1 `matches`. Uses the WhoScored match
- * ID as the D1 matches.id so re-runs are idempotent and the scrape-and-save
- * endpoint can look up matches by D1 id.
+ * Runs discoverAllWcFixtures(), maps each FotMob fixture to our team_ids
+ * and stage enum, then upserts into D1 `matches`. Uses the FotMob match
+ * ID as the D1 matches.id so re-runs are idempotent.
  *
  * Skips fixtures where team names can't be resolved — those are reported
  * back so the admin can fix the alias table.
  *
- * Costs 13 Firecrawl calls per invocation. Use dryRun=true to preview
- * without writing.
+ * Use dryRun=true to preview without writing.
  *
  * Gated by requirePrivileged.
  */
@@ -20,23 +18,26 @@ import { NextResponse, type NextRequest } from "next/server";
 import { requirePrivileged, UnauthenticatedError } from "@/lib/auth";
 import { getDb } from "@/db/client";
 import { matches } from "@/db/schema";
-import { discoverAllWcFixtures, deriveStage } from "@/lib/whoscored/fixtures";
-import { resolveTeamId } from "@/lib/whoscored/name-match";
+import { discoverAllWcFixtures, deriveStage } from "@/lib/fotmob/fixtures";
+import { resolveTeamId } from "@/lib/matches/name-match";
 
 export const maxDuration = 180;
 
 interface ImportRow {
   matchId: number;
-  whoscoredMatchId: string;
+  externalMatchId: string;
   stage: "group" | "r32" | "r16" | "qf" | "sf" | "final" | "3p";
   groupLetter: string | null;
   homeTeamId: number;
   awayTeamId: number;
   kickoffUtc: number;
+  status: "scheduled" | "live" | "finished";
+  homeScore: number | null;
+  awayScore: number | null;
 }
 
 interface ImportSkip {
-  whoscoredMatchId: string;
+  externalMatchId: string;
   reason: string;
   homeTeam: string;
   awayTeam: string;
@@ -54,7 +55,17 @@ export async function POST(request: NextRequest) {
 
   const body = (await request.json().catch(() => ({}))) as { dryRun?: boolean };
 
-  const { fixtures, stages } = await discoverAllWcFixtures();
+  let discovered: Awaited<ReturnType<typeof discoverAllWcFixtures>>;
+  try {
+    discovered = await discoverAllWcFixtures();
+  } catch (e) {
+    return NextResponse.json(
+      { ok: false, error: e instanceof Error ? e.message : String(e) },
+      { status: 502 },
+    );
+  }
+
+  const { fixtures, stages } = discovered;
 
   const toImport: ImportRow[] = [];
   const skipped: ImportSkip[] = [];
@@ -64,7 +75,7 @@ export async function POST(request: NextRequest) {
     const away = resolveTeamId(f.awayTeam);
     if (!home || !away) {
       skipped.push({
-        whoscoredMatchId: f.whoscoredMatchId,
+        externalMatchId: f.externalMatchId,
         reason: `Unresolved teams: home="${f.homeTeam}" → ${home?.id ?? "null"}; away="${f.awayTeam}" → ${away?.id ?? "null"}`,
         homeTeam: f.homeTeam,
         awayTeam: f.awayTeam,
@@ -73,7 +84,7 @@ export async function POST(request: NextRequest) {
     }
     if (f.kickoffUtc == null) {
       skipped.push({
-        whoscoredMatchId: f.whoscoredMatchId,
+        externalMatchId: f.externalMatchId,
         reason: "Missing kickoff",
         homeTeam: f.homeTeam,
         awayTeam: f.awayTeam,
@@ -82,13 +93,16 @@ export async function POST(request: NextRequest) {
     }
     const { stage, groupLetter } = deriveStage(f.stageLabel, f.kickoffUtc);
     toImport.push({
-      matchId: Number(f.whoscoredMatchId),
-      whoscoredMatchId: f.whoscoredMatchId,
+      matchId: Number(f.externalMatchId),
+      externalMatchId: f.externalMatchId,
       stage,
       groupLetter,
       homeTeamId: home.id,
       awayTeamId: away.id,
       kickoffUtc: f.kickoffUtc,
+      status: f.status,
+      homeScore: f.homeScore,
+      awayScore: f.awayScore,
     });
   }
 
@@ -105,12 +119,12 @@ export async function POST(request: NextRequest) {
           homeTeamId: r.homeTeamId,
           awayTeamId: r.awayTeamId,
           kickoffUtc: r.kickoffUtc,
-          homeScore: null,
-          awayScore: null,
-          status: "scheduled",
+          homeScore: r.homeScore,
+          awayScore: r.awayScore,
+          status: r.status,
           ingestedAt: null,
           rawEvents: null,
-          whoscoredMatchId: r.whoscoredMatchId,
+          externalMatchId: r.externalMatchId,
         })
         .onConflictDoUpdate({
           target: matches.id,
@@ -120,7 +134,10 @@ export async function POST(request: NextRequest) {
             homeTeamId: r.homeTeamId,
             awayTeamId: r.awayTeamId,
             kickoffUtc: r.kickoffUtc,
-            whoscoredMatchId: r.whoscoredMatchId,
+            homeScore: r.homeScore,
+            awayScore: r.awayScore,
+            status: r.status,
+            externalMatchId: r.externalMatchId,
           },
         });
       written++;
@@ -136,5 +153,11 @@ export async function POST(request: NextRequest) {
     skipped,
     stages,
     sample: toImport.slice(0, 5),
+    ...(!fixtures.length
+      ? { warning: "FotMob loaded, but no fixtures were parsed." }
+      : {}),
+    ...(fixtures.length && !toImport.length
+      ? { warning: "Fixtures were parsed, but none could be imported. Check skipped reasons." }
+      : {}),
   });
 }

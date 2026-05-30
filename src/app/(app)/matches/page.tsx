@@ -1,11 +1,16 @@
 import { PageHeader } from "@/components/page-header";
-import { ScrapeMatchButton } from "@/components/matches/scrape-match-button";
+import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { requireUser } from "@/lib/auth";
 import { getDb } from "@/db/client";
 import { matches, type Match } from "@/db/schema";
 import { teamById } from "@/lib/teams-data";
 import { playerById } from "@/lib/players-data";
 import type { MatchEvent } from "@/lib/scoring/compute";
+import {
+  getFotmobSnapshot,
+  getMatchEvents,
+  type FotmobMatchSnapshot,
+} from "@/lib/matches/raw-events";
 
 export const metadata = {
   title: "Matches & results — WC2026 pick'em",
@@ -26,6 +31,17 @@ function fmtUtc(sec: number): string {
   return new Date(sec * 1000).toISOString().replace("T", " ").slice(0, 16) + " UTC";
 }
 
+function fmtPacific(sec: number): string {
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Los_Angeles",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZoneName: "short",
+  }).format(new Date(sec * 1000));
+}
+
 function teamLabel(id: number | null): string {
   if (id == null) return "TBD";
   const t = teamById.get(id);
@@ -39,6 +55,8 @@ function playerLabel(id: number): string {
 
 export default async function MatchesPage() {
   const user = await requireUser();
+  const { env } = await getCloudflareContext({ async: true });
+  const isAdmin = env.ADMIN_EMAIL?.toLowerCase() === user.email.toLowerCase();
   const db = await getDb();
   const rows = await db.select().from(matches).orderBy(matches.kickoffUtc);
 
@@ -58,11 +76,13 @@ export default async function MatchesPage() {
           <div className="font-display text-2xl text-text">
             Schedule lands once the data provider is wired
           </div>
-          <div className="text-xs text-text-muted mt-2 max-w-md mx-auto">
-            Admin: POST to <code className="text-accent">/api/admin/import-fixtures</code> to
-            seed from WhoScored (13 Firecrawl calls, ~72 group + 32 KO fixtures).
-            Add <code>{`{ "dryRun": true }`}</code> first to preview.
-          </div>
+          {isAdmin ? (
+            <div className="text-xs text-text-muted mt-2 max-w-md mx-auto">
+              Use the admin console to POST to{" "}
+              <code className="text-accent">/api/admin/import-fixtures</code> and seed
+              from FotMob. Add <code>{`{ "dryRun": true }`}</code> first to preview.
+            </div>
+          ) : null}
         </div>
       </>
     );
@@ -75,7 +95,7 @@ export default async function MatchesPage() {
   const assistsByPlayer = new Map<number, number>();
   const cleanSheetsByTeam = new Map<number, number>();
   for (const m of finishedMatches) {
-    const events = (m.rawEvents as MatchEvent[] | null) ?? [];
+    const events = getMatchEvents(m.rawEvents);
     for (const ev of events) {
       if (ev.type === "goal") {
         goalsByPlayer.set(ev.playerId, (goalsByPlayer.get(ev.playerId) ?? 0) + 1);
@@ -192,7 +212,6 @@ export default async function MatchesPage() {
                   key={key}
                   title={`Group ${letter}`}
                   matches={groupedByKey.get(key)!}
-                  isAdmin={user.isAdmin}
                 />
               );
             })}
@@ -206,7 +225,7 @@ export default async function MatchesPage() {
           <h2 className="font-display text-2xl text-text mb-3">
             {STAGE_LABEL[stage as Match["stage"]]}
           </h2>
-          <StageBlock matches={groupedByKey.get(stage)!} isAdmin={user.isAdmin} />
+          <StageBlock matches={groupedByKey.get(stage)!} />
         </section>
       ))}
     </>
@@ -216,11 +235,9 @@ export default async function MatchesPage() {
 function StageBlock({
   title,
   matches,
-  isAdmin,
 }: {
   title?: string;
   matches: Match[];
-  isAdmin: boolean;
 }) {
   return (
     <div className="bg-surface border border-border-base rounded">
@@ -231,15 +248,16 @@ function StageBlock({
       )}
       <div className="divide-y divide-border-base/50">
         {matches.map((m) => (
-          <MatchRow key={m.id} match={m} isAdmin={isAdmin} />
+          <MatchRow key={m.id} match={m} />
         ))}
       </div>
     </div>
   );
 }
 
-function MatchRow({ match, isAdmin }: { match: Match; isAdmin: boolean }) {
-  const events = (match.rawEvents as MatchEvent[] | null) ?? [];
+function MatchRow({ match }: { match: Match }) {
+  const events = getMatchEvents(match.rawEvents);
+  const fotmob = getFotmobSnapshot(match.rawEvents);
   const sortedEvents = [...events].sort((a, b) => (a.minute ?? 999) - (b.minute ?? 999));
   const isFinished = match.status === "finished";
   const hasEvents = sortedEvents.length > 0;
@@ -260,12 +278,21 @@ function MatchRow({ match, isAdmin }: { match: Match; isAdmin: boolean }) {
         </div>
         <div className="font-mono text-sm shrink-0 px-2">
           {isFinished && match.homeScore != null && match.awayScore != null ? (
-            <span className="text-accent">
-              {match.homeScore}<span className="text-text-muted">–</span>{match.awayScore}
-            </span>
+            <div className="flex flex-col items-center leading-tight">
+              <span className="text-accent">
+                {match.homeScore}<span className="text-text-muted">–</span>{match.awayScore}
+              </span>
+              <span className="text-text-muted text-[10px] uppercase tracking-[0.1em]">
+                {fmtUtc(match.kickoffUtc)}
+              </span>
+              <span className="text-text-muted text-[10px] uppercase tracking-[0.1em]">
+                {fmtPacific(match.kickoffUtc)}
+              </span>
+            </div>
           ) : (
-            <span className="text-text-muted text-[10px] uppercase tracking-[0.1em]">
-              {fmtUtc(match.kickoffUtc)}
+            <span className="text-text-muted text-[10px] uppercase tracking-[0.1em] flex flex-col items-center leading-tight">
+              <span>{fmtUtc(match.kickoffUtc)}</span>
+              <span>{fmtPacific(match.kickoffUtc)}</span>
             </span>
           )}
         </div>
@@ -291,9 +318,51 @@ function MatchRow({ match, isAdmin }: { match: Match; isAdmin: boolean }) {
           </div>
         </details>
       )}
-      {isAdmin && match.whoscoredMatchId && (
-        <ScrapeMatchButton matchId={match.id} />
+      {isFinished && fotmob && (
+        <details className="mt-2 group">
+          <summary className="cursor-pointer list-none font-mono text-[10px] uppercase tracking-[0.1em] text-text-muted hover:text-accent inline-flex items-center gap-1.5">
+            <span>FotMob stats</span>
+            <span className="text-accent transition-transform group-open:rotate-45">+</span>
+          </summary>
+          <FotmobStats snapshot={fotmob} />
+        </details>
       )}
+    </div>
+  );
+}
+
+function formatStatValue(value: unknown) {
+  if (value == null) return "—";
+  if (typeof value === "number") return String(value);
+  if (typeof value === "string") return value;
+  return String(value);
+}
+
+function FotmobStats({ snapshot }: { snapshot: FotmobMatchSnapshot }) {
+  return (
+    <div className="mt-2 space-y-3">
+      {snapshot.stats.map((group) => (
+        <div key={group.key || group.title} className="border border-border-base/70 rounded overflow-hidden">
+          <div className="px-3 py-2 border-b border-border-base/70 font-mono text-[10px] uppercase tracking-[0.12em] text-text">
+            {group.title}
+          </div>
+          <table className="w-full text-[11px]">
+            <tbody>
+              {group.stats.map((row) => (
+                <tr key={row.key} className="border-b border-border-base/40 last:border-0">
+                  <td className="px-3 py-1.5 text-left font-mono text-accent">
+                    {formatStatValue(row.stats[0])}
+                  </td>
+                  <td className="px-3 py-1.5 text-center text-text-muted">{row.title}</td>
+                  <td className="px-3 py-1.5 text-right font-mono text-accent">
+                    {formatStatValue(row.stats[1])}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ))}
     </div>
   );
 }
@@ -326,4 +395,3 @@ function EventLine({ event }: { event: MatchEvent }) {
     </div>
   );
 }
-

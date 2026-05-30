@@ -60,6 +60,6 @@
 		// UUID shared privately with group members — anyone with it can join.
 		// Generate one with: node -e "console.log(crypto.randomUUID())"
 		"INVITE_CODE": "8f15118f-e878-42fd-879c-d35f632d4873",
-		"NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY": "pk_live_Y2xlcmsuZm9sbG93YnVpbGRlcnMud29ya2Vycy5kZXYk"
+		"NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY": "pk_test_c3R1bm5pbmctc3R1ZC0xOC5jbGVyay5hY2NvdW50cy5kZXYk"
 	}
 }

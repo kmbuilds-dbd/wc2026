@@ -1,5 +1,5 @@
 /**
- * POST /api/cron/refresh-odds — pull WC 2026 outrights from The Odds API
+ * POST /api/cron/refresh-odds — pull WC 2026 market data from Kalshi
  * and persist as odds_snapshots rows.
  *
  * Fires daily at 06:00 UTC via wrangler.jsonc → triggers.crons. Also
@@ -8,7 +8,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { requirePrivileged, UnauthenticatedError } from "@/lib/auth";
 import { refreshOdds } from "@/lib/odds/refresh";
-import { OddsApiError } from "@/lib/odds/client";
+import { KalshiApiError } from "@/lib/odds/kalshi";
 
 export async function POST(request: NextRequest) {
   try {
@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
     const result = await refreshOdds();
     return NextResponse.json({ ok: true, ...result });
   } catch (e) {
-    if (e instanceof OddsApiError) {
+    if (e instanceof KalshiApiError) {
       return NextResponse.json(
         { ok: false, error: e.message, status: e.status, body: e.body },
         { status: 502 },

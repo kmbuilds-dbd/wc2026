@@ -12,7 +12,7 @@ import { getLineupWindow, type KoRound, type LineupRound } from "@/lib/locks";
 import { computeAliveTeamsFromMatches } from "@/lib/scoring/alive";
 import type { PlayerPosition } from "@/lib/players-data";
 
-const ROUNDS = ["group", "r32", "r16", "qf", "sf", "final"] as const;
+const ROUNDS = ["r32", "r16", "qf", "sf", "final"] as const;
 const ROUND_LABEL: Record<LineupRound, string> = {
   group: "Group stage",
   r32: "Round of 32",
@@ -52,7 +52,37 @@ export default async function LineupRoundPage({
   params: Promise<{ round: string }>;
 }) {
   const { round } = await params;
-  if (!ROUNDS.includes(round as LineupRound)) notFound();
+  if (round === "group") {
+    return (
+      <>
+        <PageHeader
+          eyebrow="Lineup · Knockouts"
+          title="Your"
+          highlight="lineup"
+          subtitle="Lineup picks start in the knockouts, once group-stage teams are resolved."
+        />
+        <ScoringLegend scope="lineup" />
+        <div className="bg-surface border border-border-base rounded p-8 text-center">
+          <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-text-muted mb-3">
+            Group-stage lineups are closed
+          </div>
+          <div className="font-display text-2xl text-text mb-2">
+            Lineups start with the Round of 32
+          </div>
+          <p className="text-sm text-text-muted max-w-md mx-auto mb-5">
+            You will make lineup picks after group stage, when the knockout player pool is known.
+          </p>
+          <a
+            href="/picks#lineups"
+            className="inline-flex rounded-sm border border-accent/30 bg-accent/10 px-4 py-2 font-mono text-[10px] uppercase tracking-[0.14em] text-accent hover:bg-accent/15"
+          >
+            Back to lineup section
+          </a>
+        </div>
+      </>
+    );
+  }
+  if (!ROUNDS.includes(round as KoRound)) notFound();
   const r = round as LineupRound;
 
   const user = await requireUser();

@@ -99,7 +99,12 @@ export default async function LeaderboardPage() {
                         className="block hover:text-accent"
                       >
                         <div className="font-display text-base text-text">{row.displayName}</div>
-                        <div className="font-mono text-[10px] text-text-dim">{row.userEmail}</div>
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-[10px] text-text-dim">
+                          <span>{row.userEmail}</span>
+                          <span className="rounded-sm border border-border-base bg-surface-2 px-1.5 py-0.5 text-text-muted">
+                            {row.picksMade}/{row.picksTotal} picks made
+                          </span>
+                        </div>
                       </a>
                     </td>
                     <td className="hidden md:table-cell px-4 py-2.5 text-right font-mono text-text-muted">
@@ -128,20 +133,6 @@ export default async function LeaderboardPage() {
         </div>
       )}
 
-      <div className="mt-6 rounded border border-border-base bg-surface px-4 py-3 font-mono text-[10px] uppercase tracking-[0.1em] text-text-muted">
-        How scoring works → see{" "}
-        <a
-          href="https://github.com/kmbuilds-dbd/wc2026/blob/main/src/lib/scoring/rules.ts"
-          target="_blank"
-          rel="noopener"
-          className="text-accent hover:underline normal-case tracking-normal"
-        >
-          rules.ts
-        </a>{" "}
-        · group exact = {} {/* eslint-disable react/no-unescaped-entities */}
-        5 pts · wildcard = 5 · R32 = 10 · R16 = 20 · QF = 40 · SF = 80 · Final = 160 · winner /
-        top scorer / golden glove = 100 each
-      </div>
     </>
   );
 }

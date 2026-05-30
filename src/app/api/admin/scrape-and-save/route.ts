@@ -3,10 +3,10 @@
  *
  * Body: { matchId: number } OR { url: string }
  *
- * Scrapes a WhoScored match and persists the result to D1. When `matchId`
- * is provided, reads the row from D1 (must have whoscored_match_id set) and
+ * Pulls a FotMob match and persists the result to D1. When `matchId`
+ * is provided, reads the row from D1 (must have a FotMob match id set) and
  * uses scrapeAndSaveRow. When `url` is provided directly, returns the parsed
- * payload without writing (preview mode for unmapped URLs).
+ * stats snapshot without writing.
  *
  * Returns per-event resolution + unresolvedPlayers report.
  *
@@ -17,9 +17,7 @@ import { eq } from "drizzle-orm";
 import { requirePrivileged, UnauthenticatedError } from "@/lib/auth";
 import { getDb } from "@/db/client";
 import { matches } from "@/db/schema";
-import { scrapeMatch, FirecrawlError } from "@/lib/whoscored/scrape";
-import { scrapeAndSaveRow } from "@/lib/whoscored/scrape-and-save";
-import { resolveTeamId } from "@/lib/whoscored/name-match";
+import { scrapeAndSaveRow, scrapeFotmobMatchUrl } from "@/lib/fotmob/scrape-and-save";
 import { recomputeAllUsers } from "@/lib/scoring/apply";
 
 export const maxDuration = 60;
@@ -55,15 +53,15 @@ export async function POST(request: NextRequest) {
       const recompute = report.written ? await recomputeAllUsers() : null;
       return NextResponse.json({ ok: true, report, recompute });
     } catch (e) {
-      if (e instanceof FirecrawlError) {
-        return NextResponse.json({ ok: false, error: e.message }, { status: 502 });
-      }
-      throw e;
+      return NextResponse.json(
+        { ok: false, error: e instanceof Error ? e.message : String(e) },
+        { status: 502 },
+      );
     }
   }
 
-  // Path B: URL provided — scrape only, no write.
-  if (!body.url || !/^https:\/\/www\.whoscored\.com\/matches\/\d+\//.test(body.url)) {
+  // Path B: URL provided — pull only, no write.
+  if (!body.url || !/^https:\/\/www\.fotmob\.com\/matches\//.test(body.url)) {
     return NextResponse.json(
       { ok: false, error: "Provide { matchId } (writes to D1) or { url } (preview only)" },
       { status: 400 },
@@ -71,20 +69,19 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const scraped = await scrapeMatch(body.url);
-    const home = resolveTeamId(scraped.homeTeam);
-    const away = resolveTeamId(scraped.awayTeam);
+    const scraped = await scrapeFotmobMatchUrl(body.url);
     return NextResponse.json({
       ok: true,
       preview: true,
-      scraped: { ...scraped, rawMarkdown: undefined },
-      resolvedHomeTeamId: home?.id ?? null,
-      resolvedAwayTeamId: away?.id ?? null,
+      status: scraped.status,
+      homeScore: scraped.homeScore,
+      awayScore: scraped.awayScore,
+      fotmob: scraped.snapshot,
     });
   } catch (e) {
-    if (e instanceof FirecrawlError) {
-      return NextResponse.json({ ok: false, error: e.message }, { status: 502 });
-    }
-    throw e;
+    return NextResponse.json(
+      { ok: false, error: e instanceof Error ? e.message : String(e) },
+      { status: 502 },
+    );
   }
 }

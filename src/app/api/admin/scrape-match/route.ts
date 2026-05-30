@@ -3,15 +3,14 @@
  *
  * Body: { url: string }
  *
- * Calls the WhoScored scraper (via Firecrawl) and returns the parsed match
- * data. Does NOT yet write to D1 — admin can review the parsed output and
- * trigger a follow-up writer once name → player_id mapping is solved.
+ * Pulls a FotMob match URL and returns the parsed result + stats snapshot.
+ * Does not write to D1.
  *
  * Gated by requirePrivileged — admin or x-cron-secret.
  */
 import { NextResponse, type NextRequest } from "next/server";
 import { requirePrivileged, UnauthenticatedError } from "@/lib/auth";
-import { scrapeMatch, FirecrawlError } from "@/lib/whoscored/scrape";
+import { scrapeFotmobMatchUrl } from "@/lib/fotmob/scrape-and-save";
 
 export async function POST(request: NextRequest) {
   try {
@@ -24,29 +23,31 @@ export async function POST(request: NextRequest) {
   }
 
   const body = (await request.json().catch(() => ({}))) as { url?: string };
-  if (!body.url || !/^https:\/\/www\.whoscored\.com\/matches\/\d+\//.test(body.url)) {
+  if (!body.url || !/^https:\/\/www\.fotmob\.com\/matches\//.test(body.url)) {
     return NextResponse.json(
       {
         ok: false,
-        error: "Provide a valid WhoScored match URL (https://www.whoscored.com/matches/<id>/...)",
+        error: "Provide a valid FotMob match URL (https://www.fotmob.com/matches/...)",
       },
       { status: 400 },
     );
   }
 
   try {
-    const result = await scrapeMatch(body.url);
-    // Don't send the full markdown back to the client (~35KB) unless debugging.
-    const { rawMarkdown, ...trimmed } = result;
-    void rawMarkdown;
-    return NextResponse.json({ ok: true, match: trimmed });
+    const result = await scrapeFotmobMatchUrl(body.url);
+    return NextResponse.json({
+      ok: true,
+      match: {
+        status: result.status,
+        homeScore: result.homeScore,
+        awayScore: result.awayScore,
+        fotmob: result.snapshot,
+      },
+    });
   } catch (e) {
-    if (e instanceof FirecrawlError) {
-      return NextResponse.json(
-        { ok: false, error: e.message, status: e.status ?? null },
-        { status: 502 },
-      );
-    }
-    throw e;
+    return NextResponse.json(
+      { ok: false, error: e instanceof Error ? e.message : String(e) },
+      { status: 502 },
+    );
   }
 }

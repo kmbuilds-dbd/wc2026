@@ -1,4 +1,4 @@
-import { count, eq, sql, and } from "drizzle-orm";
+import { count, eq, sql } from "drizzle-orm";
 import { PageHeader } from "@/components/page-header";
 import { FIRST_KICKOFF_UTC } from "@/lib/locks";
 import { getUserEmail } from "@/lib/auth";
@@ -7,7 +7,6 @@ import {
   groupPicks,
   wildcardPicks,
   tournamentPicks,
-  lineupPicks,
   teams,
 } from "@/db/schema";
 
@@ -20,7 +19,7 @@ async function getPicksSummary(email: string) {
   try {
     const db = await getDb();
 
-    const [groupTotal, groupDone, wildcardDone, tournamentRow, lineupGroupDone] =
+    const [groupTotal, groupDone, wildcardDone, tournamentRow] =
       await Promise.all([
         db
           .select({ n: sql<number>`count(distinct ${teams.groupLetter})` })
@@ -41,11 +40,6 @@ async function getPicksSummary(email: string) {
           .from(tournamentPicks)
           .where(eq(tournamentPicks.userEmail, email))
           .get(),
-        db
-          .select({ n: count() })
-          .from(lineupPicks)
-          .where(and(eq(lineupPicks.userEmail, email), eq(lineupPicks.round, "group")))
-          .get(),
       ]);
 
     const numGroups = groupTotal?.n ?? 16;
@@ -59,7 +53,6 @@ async function getPicksSummary(email: string) {
       groups: { done: groupDone?.n ?? 0, total: numGroups * 2 },
       wildcards: { done: wildcardDone?.n ?? 0, total: 8 },
       tournament: { done: tournamentDone, total: 3 },
-      lineupGroup: { done: lineupGroupDone?.n ?? 0, total: 4 },
     };
   } catch {
     return null;
@@ -107,15 +100,15 @@ export default async function DashboardPage() {
           desc="Visible to others after each category locks."
         />
         <Card
-          href="/picks/lineup/group"
+          href="/picks#lineups"
           label="Lineup picks"
-          desc="1 GK · 1 DEF · 1 MID · 1 FWD for the group stage and each KO round. Pool: teams still alive."
+          desc="Knockout-only lineups unlock after group stage, once alive teams are known."
         />
       </div>
 
       <div className="mt-10 rounded border border-border-base bg-surface p-5 font-mono text-[11px] text-text-muted leading-relaxed">
         Signed in as{" "}
-        <span className="text-text">{email ?? "(not yet — visit will trigger CF Access PIN)"}</span>
+        <span className="text-text">{email ?? "(not signed in)"}</span>
       </div>
     </>
   );
@@ -128,7 +121,6 @@ function PicksChecklist({ progress }: { progress: Progress }) {
     { label: "Group picks (1st & 2nd per group)", href: "/picks", done: progress.groups.done, total: progress.groups.total },
     { label: "Best 3rds — wildcard slots", href: "/picks", done: progress.wildcards.done, total: progress.wildcards.total },
     { label: "Winner · Top Scorer · Golden Glove", href: "/picks", done: progress.tournament.done, total: progress.tournament.total },
-    { label: "Lineup — Group stage", href: "/picks/lineup/group", done: progress.lineupGroup.done, total: progress.lineupGroup.total },
   ];
 
   const allDone = rows.every((r) => r.done === r.total);

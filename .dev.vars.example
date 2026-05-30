@@ -9,6 +9,9 @@ API_SPORTS_KEY=
 # The Odds API free tier key — get one from https://the-odds-api.com
 ODDS_API_KEY=
 
+# Anthropic key for /api/admin/refresh-squads to search for confirmed squads.
+ANTHROPIC_API_KEY=
+
 # Any random string. Generate with: openssl rand -hex 32
 # Required for cron route handlers to authenticate cron-trigger invocations.
 CRON_SECRET=

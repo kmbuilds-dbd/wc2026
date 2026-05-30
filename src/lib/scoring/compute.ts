@@ -4,7 +4,7 @@
  * No I/O — apply.ts handles DB reads/writes. This lets us unit-test scoring
  * by passing fake input later (Day 18-19 E2E).
  *
- * Lineup scoring is stubbed; UI lands in Day 12-13.
+ * Lineup scoring reads finished-match events and clean sheets from raw_events.
  */
 import { RULES } from "./rules";
 import { BRACKET_SLOTS, type BracketRound } from "@/lib/bracket-shape";
@@ -18,6 +18,7 @@ import type {
   Match,
   User,
 } from "@/db/schema";
+import { getMatchEvents } from "@/lib/matches/raw-events";
 
 // ─── Raw event shape stored in matches.raw_events JSON column ────────────
 
@@ -182,7 +183,7 @@ export function computeActuals(matches: Match[]): Actuals {
   // 5. Top scorer (player_ids tied for most goals).
   const goalsByPlayer: Map<number, number> = new Map();
   for (const m of finished) {
-    const events = (m.rawEvents as MatchEvent[] | null) ?? [];
+    const events = getMatchEvents(m.rawEvents);
     for (const ev of events) {
       if (ev.type === "goal") {
         goalsByPlayer.set(ev.playerId, (goalsByPlayer.get(ev.playerId) ?? 0) + 1);
@@ -343,8 +344,8 @@ function scoreTournament(
   if (!pick) return [];
   const rows: ScoreRow[] = [];
 
-  // Winner — picking the champion scores TOURNAMENT_WINNER; picking the
-  // losing finalist scores TOURNAMENT_FINALIST. One key per pick, exclusive.
+  // Winner — picking the champion scores TOURNAMENT_WINNER; the same pick
+  // gets partial credit if that team reaches the final but loses.
   if (pick.winnerTeamId != null && actual.champion != null) {
     let points = 0;
     if (pick.winnerTeamId === actual.champion) points = RULES.TOURNAMENT_WINNER;
@@ -394,7 +395,7 @@ function scoreTournament(
 
 // ─── Lineup scoring ─────────────────────────────────────────────────────
 
-const LINEUP_ROUNDS: LineupRound[] = ["group", "r32", "r16", "qf", "sf", "final"];
+const LINEUP_ROUNDS: LineupRound[] = ["r32", "r16", "qf", "sf", "final"];
 
 interface PlayerStatLookup {
   /** player_id → team_id */
@@ -435,7 +436,7 @@ function tallyRoundStats(roundMatches: Match[]): {
       );
     }
 
-    const events = (m.rawEvents as MatchEvent[] | null) ?? [];
+    const events = getMatchEvents(m.rawEvents);
     for (const ev of events) {
       if (ev.type === "goal") {
         goalsByPlayer.set(ev.playerId, (goalsByPlayer.get(ev.playerId) ?? 0) + 1);

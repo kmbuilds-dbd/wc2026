@@ -1,8 +1,8 @@
 /**
- * Cron sweeper: scrape eligible D1 matches via WhoScored and persist
+ * Cron sweeper: pull eligible D1 matches via FotMob and persist
  * finished results.
  *
- * Eligibility: kickoffUtc < now - 2h, status != "finished", whoscored_match_id
+ * Eligibility: kickoffUtc < now - 4h, status != "finished", FotMob match id
  * is set. Runs every 30 min per wrangler.jsonc triggers.crons.
  *
  * Two ways this fires:
@@ -10,9 +10,8 @@
  *     x-cron-secret (WORKER_SELF_REFERENCE wired by opennextjs adapter)
  *   - admin: manual POST with admin auth or x-cron-secret
  *
- * Firecrawl cost: one scrape per eligible match per cron tick. Live matches
- * get re-scraped every 30 min until they flip to "finished", then drop out
- * of the eligible set.
+ * Matches are checked after the game should be complete; finished matches
+ * drop out of the eligible set after the first successful write.
  */
 import { NextResponse, type NextRequest } from "next/server";
 import { requirePrivileged, UnauthenticatedError } from "@/lib/auth";
@@ -21,8 +20,7 @@ import {
   findEligibleMatches,
   scrapeAndSaveRow,
   type SaveReport,
-} from "@/lib/whoscored/scrape-and-save";
-import { FirecrawlError } from "@/lib/whoscored/scrape";
+} from "@/lib/fotmob/scrape-and-save";
 import { recomputeAllUsers, type RecomputeResult } from "@/lib/scoring/apply";
 
 export const maxDuration = 240;
@@ -55,12 +53,11 @@ export async function POST(request: NextRequest) {
         events: [],
         unresolvedPlayers: [],
         written: false,
+        sourceUrl: null,
         error:
-          e instanceof FirecrawlError
-            ? `firecrawl: ${e.message}`
-            : e instanceof Error
-              ? e.message
-              : String(e),
+          e instanceof Error
+            ? e.message
+            : String(e),
       });
     }
   }

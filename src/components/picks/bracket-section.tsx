@@ -8,19 +8,19 @@
  *   open    → editable window between group stage end and R32 first kickoff
  *   locked  → R32 first kickoff has passed, picks frozen
  *
- * No matchup-slot resolution yet — each pick is just "which team wins this
- * named slot." When real fixtures land we'll annotate each slot with its
- * resolved matchup (e.g. "R32 #1 = winner of Group A vs best-3rd from CDEF").
+ * When knockout fixtures exist, each slot shows the real matchup and limits
+ * the winner dropdown to those two teams.
  */
 import { useMemo, useState, useTransition } from "react";
 import { saveBracketPicks } from "@/app/(app)/picks/actions";
-import { teamList } from "@/lib/teams-data";
+import { teamById, teamList } from "@/lib/teams-data";
 import {
   BRACKET_SLOT_COUNT,
   ROUND_LABEL,
   slotsByRound,
   type BracketRound,
 } from "@/lib/bracket-shape";
+import type { BracketMatchup } from "@/lib/bracket-matchups";
 import type { BracketWindow } from "@/lib/locks";
 import { SectionHeader, SaveBar } from "./shared";
 import { PendingPanel } from "./pending-panel";
@@ -29,6 +29,7 @@ interface Props {
   /** existing picks: { 'r32-1': teamId, ... 'final': teamId } */
   initial: Record<string, number>;
   bracket: BracketWindow;
+  matchups: BracketMatchup[];
 }
 
 const ROUND_GRID: Record<BracketRound, string> = {
@@ -39,8 +40,16 @@ const ROUND_GRID: Record<BracketRound, string> = {
   final: "grid-cols-1",
 };
 
-export function BracketSection({ initial, bracket }: Props) {
+function fmtKickoff(unix: number): string {
+  return new Date(unix * 1000).toISOString().replace("T", " ").slice(0, 16) + " UTC";
+}
+
+export function BracketSection({ initial, bracket, matchups }: Props) {
   const locked = bracket.state !== "open";
+  const matchupBySlot = useMemo(
+    () => new Map(matchups.map((m) => [m.slot, m])),
+    [matchups],
+  );
 
   const [picks, setPicks] = useState<Record<string, number | null>>(() => {
     const out: Record<string, number | null> = {};
@@ -115,6 +124,12 @@ export function BracketSection({ initial, bracket }: Props) {
               <div className={`grid gap-3 ${ROUND_GRID[round]}`}>
                 {slots.map((s) => {
                   const current = picks[s.slot];
+                  const matchup = matchupBySlot.get(s.slot);
+                  const matchupTeams = [matchup?.homeTeamId, matchup?.awayTeamId]
+                    .filter((id): id is number => id != null)
+                    .map((id) => teamById.get(id))
+                    .filter((t): t is NonNullable<typeof t> => Boolean(t));
+                  const options = matchupTeams.length === 2 ? matchupTeams : teamList;
                   return (
                     <div
                       key={s.slot}
@@ -123,6 +138,22 @@ export function BracketSection({ initial, bracket }: Props) {
                       <div className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-muted mb-1.5">
                         {s.label}
                       </div>
+                      {matchup ? (
+                        <div className="mb-2 min-h-10">
+                          <div className="font-display text-base text-text leading-tight">
+                            {matchup.homeTeamId ? teamById.get(matchup.homeTeamId)?.name ?? "TBD" : "TBD"}
+                            <span className="px-1.5 text-text-muted">vs</span>
+                            {matchup.awayTeamId ? teamById.get(matchup.awayTeamId)?.name ?? "TBD" : "TBD"}
+                          </div>
+                          <div className="font-mono text-[10px] uppercase tracking-[0.08em] text-text-dim mt-1">
+                            {fmtKickoff(matchup.kickoffUtc)}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="mb-2 min-h-10 font-mono text-[10px] uppercase tracking-[0.08em] text-text-dim leading-relaxed">
+                          Matchup pending
+                        </div>
+                      )}
                       <select
                         name={`slot_${s.slot}`}
                         value={current ?? ""}
@@ -133,7 +164,7 @@ export function BracketSection({ initial, bracket }: Props) {
                         className="w-full bg-surface-2 border border-border-base text-text rounded-sm px-2 py-1.5 text-sm focus:border-accent/40 outline-none disabled:opacity-50"
                       >
                         <option value="">— pick winner —</option>
-                        {teamList.map((t) => (
+                        {options.map((t) => (
                           <option key={t.id} value={t.id}>
                             {t.flag} {t.name}
                           </option>

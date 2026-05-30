@@ -1,19 +1,18 @@
 /**
  * POST /api/admin/discover-fixtures
  *
- * No body. Hits all 13 hardcoded WC 2026 stage fixture pages on WhoScored
- * (12 groups + 1 final stage) via Firecrawl, parses each, and returns the
- * merged list of fixtures with WhoScored match IDs + team IDs + kickoffs.
+ * No body. Hits FotMob's WC 2026 fixture page, parses its embedded Next.js
+ * payload, and returns fixtures with FotMob match IDs, team
+ * names, and kickoffs.
  *
- * 13 Firecrawl calls per invocation. Use sparingly — run once to populate,
- * then re-run only when KO matchups are decided (Final Stage fills in
- * after group stage ends).
+ * Use sparingly — run once to populate, then re-run when matchups or kickoffs
+ * change.
  *
  * Gated by requirePrivileged.
  */
 import { NextResponse, type NextRequest } from "next/server";
 import { requirePrivileged, UnauthenticatedError } from "@/lib/auth";
-import { discoverAllWcFixtures } from "@/lib/whoscored/fixtures";
+import { discoverAllWcFixtures } from "@/lib/fotmob/fixtures";
 
 export const maxDuration = 120;
 
@@ -27,11 +26,21 @@ export async function POST(request: NextRequest) {
     throw e;
   }
 
-  const result = await discoverAllWcFixtures();
-  return NextResponse.json({
-    ok: true,
-    totalFixtures: result.fixtures.length,
-    stages: result.stages,
-    fixtures: result.fixtures,
-  });
+  try {
+    const result = await discoverAllWcFixtures();
+    return NextResponse.json({
+      ok: true,
+      totalFixtures: result.fixtures.length,
+      stages: result.stages,
+      fixtures: result.fixtures,
+      ...(!result.fixtures.length
+        ? { warning: "FotMob loaded, but no fixtures were parsed." }
+        : {}),
+    });
+  } catch (e) {
+    return NextResponse.json(
+      { ok: false, error: e instanceof Error ? e.message : String(e) },
+      { status: 502 },
+    );
+  }
 }

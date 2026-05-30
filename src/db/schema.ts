@@ -1,7 +1,7 @@
 import { sqliteTable, text, integer, primaryKey, index } from "drizzle-orm/sqlite-core";
 
 // ── Users ────────────────────────────────────────────────────────────────
-// Lazy-created on first authenticated request after CF Access auth.
+// Lazy-created on first authenticated request after Clerk auth.
 export const users = sqliteTable("users", {
   email: text("email").primaryKey(),
   displayName: text("display_name").notNull(),
@@ -11,7 +11,7 @@ export const users = sqliteTable("users", {
 });
 
 // ── Teams ────────────────────────────────────────────────────────────────
-// Seeded once from teams.json + api-sports/teams.
+// Seeded once from the bundled teams snapshot.
 export const teams = sqliteTable(
   "teams",
   {
@@ -28,7 +28,7 @@ export const teams = sqliteTable(
 );
 
 // ── Matches ──────────────────────────────────────────────────────────────
-// Synced from api-sports/fixtures at season start; updated by ingest cron.
+// Synced from FotMob fixtures at season start; updated by ingest cron.
 export const matches = sqliteTable(
   "matches",
   {
@@ -43,9 +43,8 @@ export const matches = sqliteTable(
     status: text("status", { enum: ["scheduled", "live", "finished"] }).notNull(),
     ingestedAt: integer("ingested_at"),
     rawEvents: text("raw_events", { mode: "json" }),
-    /** WhoScored match id (from /matches/<id>/...). Used by the scraper to
-     *  re-fetch the right page on each refresh. */
-    whoscoredMatchId: text("whoscored_match_id"),
+    /** External match id. Column name is historical; current values are FotMob ids. */
+    externalMatchId: text("whoscored_match_id"),
   },
   (t) => [
     index("matches_kickoff_idx").on(t.kickoffUtc),

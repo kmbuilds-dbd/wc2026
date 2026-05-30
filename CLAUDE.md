@@ -37,15 +37,15 @@ This repo is on Next 16 (App Router, React 19). It has breaking changes from pri
 - **`@opennextjs/cloudflare`** adapter — `next build` → `.open-next/worker.js` → deploys as a CF Worker
 - **Cloudflare D1** (SQLite) via Drizzle ORM
 - **Cloudflare KV** (`CACHE` binding) — reuses the wc2026_worker tracker's namespace
-- **Cloudflare Access** (Zero Trust, free 50-seat tier) — gates the entire app, drops `cf-access-authenticated-user-email` header
-- **api-sports.io** (free tier, 100 req/day) — match data, lineups, top scorers
-- **The Odds API** (free tier, 500 req/mo) — odds for the `/odds` page
+- **Clerk** — email-code auth with invite approval
+- **FotMob** — fixtures, qualification stats, and match event/stat ingestion
+- **Kalshi public markets** — odds snapshots for the `/odds` page
 
 ## Architecture
 
-### Auth (CF Access)
+### Auth
 
-Every authenticated request includes `cf-access-authenticated-user-email`. `src/lib/auth.ts` reads it, lazy-creates a `users` row on first hit, exposes `requireUser()` / `requireAdmin()`. In `next dev`, fallback is the `ADMIN_EMAIL` env var or `x-dev-user-email` header.
+Clerk handles email-code sign-in/sign-up. `src/lib/auth.ts` reads the Clerk session, lazy-creates a `users` row on first hit, and exposes `requireUser()` / `requireAdmin()`. In `next dev`, fallback is the `ADMIN_EMAIL` env var or `x-dev-user-email` header.
 
 ### Pick locks
 
@@ -59,10 +59,10 @@ Drizzle schema in `src/db/schema.ts`. Tables: `users`, `teams`, `matches`, `grou
 
 `wrangler.jsonc → triggers.crons` declares three crons:
 - `*/30 * * * *` — `/api/cron/ingest-matches` (finished match → events → re-score)
-- `0 6 * * *` — `/api/cron/refresh-odds` (daily odds pull)
-- `0 9 * * *` — daily metadata refresh (standings + top scorers)
+- `0 6 * * *` — `/api/cron/refresh-odds` (daily Kalshi odds pull)
+- `0 9 * * *` — metadata/squad refresh
 
-For v1, route handlers are POST endpoints gated by `CRON_SECRET`. The wiring from CF cron `scheduled` event → POST is implemented in a custom worker wrapper (TODO Day 9–11).
+Route handlers are POST endpoints gated by admin auth or `CRON_SECRET`.
 
 ### Design tokens
 
@@ -95,12 +95,9 @@ Since there's no test suite, verification means `npm run build` is clean + the a
 
 | Var | Source | Used by |
 |---|---|---|
-| `API_SPORTS_KEY` | secret (`wrangler secret put`) | `lib/api-sports/client.ts` |
-| `ODDS_API_KEY` | secret | `lib/odds/client.ts` |
+| `ANTHROPIC_API_KEY` | secret | `lib/squads/refresh.ts` |
+| `CLERK_SECRET_KEY` | secret | Clerk server auth |
 | `CRON_SECRET` | secret | `api/cron/*` route auth |
-| `API_SPORTS_BASE_URL` | `vars` in wrangler.jsonc | api-sports client |
-| `ODDS_API_BASE_URL` | `vars` in wrangler.jsonc | odds client |
-| `WC2026_LEAGUE_ID` | `vars` | api-sports calls (`league=1`) |
-| `WC2026_SEASON` | `vars` | api-sports calls (`season=2026`) |
 | `ADMIN_EMAIL` | `vars` | `lib/auth.ts` (admin gate + dev fallback) |
+| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | `vars` in wrangler.jsonc | Clerk browser auth |
 | `NEXTJS_ENV` | `.dev.vars` | dev-only auth fallback |

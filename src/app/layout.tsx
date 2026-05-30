@@ -35,7 +35,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <ClerkProvider proxyUrl="https://wc2026.followbuilders.workers.dev/api/clerk-proxy">
+    <ClerkProvider>
     <html
       lang="en"
       className={`${bebas.variable} ${dmSans.variable} ${dmMono.variable} h-full antialiased`}

@@ -16,9 +16,16 @@ interface Props {
   /** existing picks: { 'A:1': teamId, 'A:2': teamId, ... } */
   initial: Record<string, number>;
   locked: boolean;
+  oddsGroupWinners: Record<string, number>;
+  oddsGroupSecondPlace: Record<string, number>;
 }
 
-export function GroupsSection({ initial, locked }: Props) {
+export function GroupsSection({
+  initial,
+  locked,
+  oddsGroupWinners,
+  oddsGroupSecondPlace,
+}: Props) {
   const [picks, setPicks] = useState<Record<string, number | null>>(() => {
     const out: Record<string, number | null> = {};
     for (const letter of groupLetters) {
@@ -32,9 +39,59 @@ export function GroupsSection({ initial, locked }: Props) {
   const [isPending, startTransition] = useTransition();
 
   function setPick(letter: string, rank: 1 | 2, teamId: number | null) {
-    setPicks((p) => ({ ...p, [`${letter}:${rank}`]: teamId }));
+    setPicks((p) => {
+      const next = { ...p, [`${letter}:${rank}`]: teamId };
+      window.dispatchEvent(
+        new CustomEvent("wc2026:group-picks-change", {
+          detail: Object.values(next).filter((v): v is number => v !== null),
+        }),
+      );
+      return next;
+    });
     setStatus(null);
     setError(null);
+  }
+
+  function dispatchGroupPicks(next: Record<string, number | null>) {
+    window.dispatchEvent(
+      new CustomEvent("wc2026:group-picks-change", {
+        detail: Object.values(next).filter((v): v is number => v !== null),
+      }),
+    );
+  }
+
+  function useBestOdds() {
+    if (locked) return;
+    setPicks((current) => {
+      const next = { ...current };
+      let filled = 0;
+
+      for (const letter of groupLetters) {
+        const firstKey = `${letter}:1`;
+        const secondKey = `${letter}:2`;
+        const suggestedWinnerId = oddsGroupWinners[letter];
+        if (suggestedWinnerId && next[firstKey] === null && next[secondKey] !== suggestedWinnerId) {
+          next[firstKey] = suggestedWinnerId;
+          filled += 1;
+        }
+
+        const firstPick = next[firstKey];
+        const suggestedSecondId = oddsGroupSecondPlace[letter];
+        if (suggestedSecondId && next[secondKey] === null && firstPick !== suggestedSecondId) {
+          next[secondKey] = suggestedSecondId;
+          filled += 1;
+        }
+      }
+
+      dispatchGroupPicks(next);
+      setStatus(
+        filled > 0
+          ? `Filled ${filled} blank group ${filled === 1 ? "pick" : "picks"} from odds. Press Save to keep them.`
+          : "No blank group picks could be filled from odds.",
+      );
+      setError(null);
+      return next;
+    });
   }
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -62,6 +119,16 @@ export function GroupsSection({ initial, locked }: Props) {
         total={24}
       />
       <form onSubmit={onSubmit}>
+        <div className="flex justify-end mb-3">
+          <button
+            type="button"
+            disabled={locked}
+            onClick={useBestOdds}
+            className="px-3 py-2 rounded-sm border border-accent/30 bg-accent/10 text-accent font-mono text-[10px] uppercase tracking-[0.14em] hover:bg-accent/15 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Use best odds
+          </button>
+        </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
           {groupLetters.map((letter) => (
             <GroupCard
@@ -159,4 +226,3 @@ function GroupCard({
     </div>
   );
 }
-

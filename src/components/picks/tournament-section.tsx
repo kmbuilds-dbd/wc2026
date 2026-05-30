@@ -25,9 +25,14 @@ interface Props {
     goldenGlovePlayerId: number | null;
   };
   locked: boolean;
+  oddsPicks: {
+    winnerTeamId: number | null;
+    topScorerPlayerId: number | null;
+    goldenGlovePlayerId: number | null;
+  };
 }
 
-export function TournamentSection({ initial, locked }: Props) {
+export function TournamentSection({ initial, locked, oddsPicks }: Props) {
   const [winner, setWinner] = useState<number | null>(initial.winnerTeamId);
   const [topScorer, setTopScorer] = useState<number | null>(initial.topScorerPlayerId);
   const [goldenGlove, setGoldenGlove] = useState<number | null>(initial.goldenGlovePlayerId);
@@ -70,6 +75,37 @@ export function TournamentSection({ initial, locked }: Props) {
     setError(null);
   }
 
+  function useBestOdds() {
+    if (locked) return;
+    let filled = 0;
+
+    if (winner === null && oddsPicks.winnerTeamId !== null) {
+      setWinner(oddsPicks.winnerTeamId);
+      filled += 1;
+    }
+
+    if (topScorer === null && oddsPicks.topScorerPlayerId !== null) {
+      const player = playerById.get(oddsPicks.topScorerPlayerId);
+      if (player) {
+        setTopScorerTeam(player.teamId);
+        setTopScorer(player.id);
+        filled += 1;
+      }
+    }
+
+    if (goldenGlove === null && oddsPicks.goldenGlovePlayerId !== null) {
+      setGoldenGlove(oddsPicks.goldenGlovePlayerId);
+      filled += 1;
+    }
+
+    setStatus(
+      filled > 0
+        ? `Filled ${filled} blank tournament ${filled === 1 ? "pick" : "picks"} from odds. Press Save to keep them.`
+        : "No blank tournament picks could be filled from odds.",
+    );
+    setError(null);
+  }
+
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (locked) return;
@@ -94,6 +130,16 @@ export function TournamentSection({ initial, locked }: Props) {
       />
 
       <form onSubmit={onSubmit}>
+        <div className="flex justify-end mb-3">
+          <button
+            type="button"
+            disabled={locked}
+            onClick={useBestOdds}
+            className="px-3 py-2 rounded-sm border border-accent/30 bg-accent/10 text-accent font-mono text-[10px] uppercase tracking-[0.14em] hover:bg-accent/15 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Use best odds
+          </button>
+        </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           {/* Tournament winner */}
           <div className="bg-surface border border-border-base rounded p-4">

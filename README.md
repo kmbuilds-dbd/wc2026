@@ -1,142 +1,241 @@
 # WC2026 Pick'em
 
-Closed-group (≤50 users) FIFA World Cup 2026 predictions web app. Cloudflare-native: Next.js 16 App Router on Workers via `@opennextjs/cloudflare`, D1 (SQLite) for app data, CF Access for auth, daily-refreshed odds, and per-match score ingestion.
+Private FIFA World Cup 2026 prediction game for a small invite-only group. Players sign in with an email one-time PIN, make group-stage, wildcard, bracket, tournament, and knockout lineup picks, then follow live scoring on a leaderboard as match data is ingested.
 
-Plan lives at `/Users/kunalmorparia/.claude/plans/with-https-raw-githubusercontent-com-mul-hashed-rabbit.md`. Architecture decisions are in [CLAUDE.md](CLAUDE.md).
+The app is built for a closed pool rather than a public fantasy product: admin-only maintenance tools, static/current football data snapshots, scheduled ingestion jobs, and lightweight Cloudflare storage are preferred over heavy infrastructure.
 
-## Local dev
+## What Is Built
+
+- Invite-gated Clerk email-code auth with no password flow.
+- Protected app routes for dashboard, picks, matches, leaderboard, teams, stats, odds, and locked public user rosters.
+- Admin console for privileged maintenance commands and data refreshes.
+- Group, wildcard, bracket, tournament, and knockout-only lineup pick flows.
+- Odds-assisted pick filling from cached Kalshi/odds snapshots without auto-saving user picks.
+- FotMob-based fixture and match-stat ingestion for the matches page and scoring refresh.
+- Qualification stats pages for group tables, goals, and assists.
+- Squad tracker backed by KV, static snapshots, and optional Anthropic-assisted admin refresh.
+- D1-backed scoring engine with recompute support and scheduled cron refreshes.
+
+## Tech Stack
+
+| Area | Technology |
+| --- | --- |
+| App framework | Next.js 16 App Router, React 19 |
+| Runtime/deploy | Cloudflare Workers through `@opennextjs/cloudflare` |
+| Auth | Clerk email-code sign-in/sign-up |
+| Database | Cloudflare D1 with Drizzle ORM |
+| Cache/state | Cloudflare KV |
+| Styling | Tailwind CSS 4 |
+| Validation | Zod |
+| Match data | FotMob fixture/stat ingestion |
+| Odds | Kalshi/odds snapshots cached in D1 |
+| Squads | Static snapshot + KV refresh, optional Anthropic web-search refresh |
+| Tooling | TypeScript, Wrangler, Drizzle Kit |
+
+## Main Routes
+
+| Route | Purpose |
+| --- | --- |
+| `/join` and `/join?code=...` | Email PIN sign-in and invite-based onboarding |
+| `/` | Player dashboard and pick progress |
+| `/picks` | Main pick form for groups, wildcards, bracket, winner, top scorer, and Golden Glove |
+| `/picks/lineup/[round]` | Knockout lineup picks after group stage |
+| `/matches` | World Cup fixtures and ingested match stats |
+| `/leaderboard` | Current standings and pick completion |
+| `/teams` | Squad tracker |
+| `/stats` | Qualification group tables, goals, and assists |
+| `/statsfull` | Hidden full stats/debug view |
+| `/odds` | Cached odds markets |
+| `/users/[email]` | Public locked picks for a user |
+| `/admin` | Admin-only curl/maintenance console |
+
+## Prerequisites
+
+- Node.js 20+
+- npm
+- Cloudflare account with Wrangler access
+- Clerk application configured for email-code auth
+- Cloudflare D1 database
+- Cloudflare KV namespace
+
+Optional, depending on which admin jobs you plan to run:
+
+- `ODDS_API_KEY` for odds refreshes.
+- `API_SPORTS_KEY` for API-Sports seed/utility routes.
+- `ANTHROPIC_API_KEY` for admin squad refresh.
+- `CRON_SECRET` for scheduled job requests.
+
+## Install
 
 ```bash
 npm install
-npm run dev                # next dev on http://localhost:3000 (no CF runtime; uses ADMIN_EMAIL fallback for auth)
-npm run preview            # full Cloudflare runtime locally (opennextjs-cloudflare preview)
 ```
 
-In `next dev` mode, set `ADMIN_EMAIL` in `.dev.vars` to your email and the auth helper will treat every request as authenticated as that user. Or pass `x-dev-user-email: someone@example.com` to test other users.
+## Local Setup
 
-## Database (D1)
+Copy the sample env file and fill the secrets you need:
 
 ```bash
-# One-time: create the production D1 database, paste the printed id into wrangler.jsonc
-wrangler d1 create wc2026
+cp .dev.vars.example .dev.vars
+```
 
-# Generate SQL migrations from src/db/schema.ts
+The sample file lists the data-provider secrets. Add the Clerk values and app-level variables below as needed for your local run.
+
+Important local/Worker variables:
+
+| Name | Required For |
+| --- | --- |
+| `CLERK_SECRET_KEY` | Clerk server-side auth |
+| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Clerk client-side auth, configured in `wrangler.jsonc` for deploys |
+| `ADMIN_EMAIL` | Admin identity and admin navigation |
+| `INVITE_CODE` | Private join link code |
+| `CRON_SECRET` | Cron/admin route authentication |
+| `ODDS_API_KEY` | Odds refresh |
+| `API_SPORTS_KEY` | API-Sports seed helpers |
+| `ANTHROPIC_API_KEY` | Squad refresh |
+
+Run the Next.js dev server:
+
+```bash
+npm run dev
+```
+
+Open `http://localhost:3000`.
+
+For a closer Cloudflare runtime test:
+
+```bash
+npm run preview
+```
+
+## Database
+
+The schema lives in `src/db/schema.ts`; migrations are in `src/db/migrations`.
+
+```bash
+# Generate migrations after schema edits
 npm run db:gen
 
-# Apply migrations
-npm run db:apply:local     # local dev D1 (under .wrangler/state/)
-npm run db:apply:remote    # production D1
+# Apply migrations locally
+npm run db:apply:local
 
-# Browse the schema
+# Apply migrations to production D1
+npm run db:apply:remote
+
+# Open Drizzle Studio
 npm run db:studio
 ```
 
-After editing `src/db/schema.ts`, always run `npm run db:gen` to emit a new migration file under `src/db/migrations/`, then apply with `db:apply:remote`.
+If provisioning from scratch:
+
+```bash
+npx wrangler d1 create wc2026
+npx wrangler kv namespace create wc2026-cache
+```
+
+Then copy the generated IDs into `wrangler.jsonc`.
+
+## Cloudflare Setup
+
+`wrangler.jsonc` defines:
+
+- Worker name: `wc2026`
+- D1 binding: `DB`
+- KV binding: `CACHE`
+- Assets binding: `ASSETS`
+- Images binding: `IMAGES`
+- Self-reference service binding: `WORKER_SELF_REFERENCE`
+- Scheduled triggers:
+  - `*/30 * * * *` for match ingestion
+  - `0 6 * * *` for odds refresh
+  - `0 9 * * *` for squad refresh
+
+Set Worker secrets with Wrangler:
+
+```bash
+npx wrangler secret put CLERK_SECRET_KEY
+npx wrangler secret put CRON_SECRET
+npx wrangler secret put ODDS_API_KEY
+npx wrangler secret put API_SPORTS_KEY
+npx wrangler secret put ANTHROPIC_API_KEY
+```
+
+Only set the optional data-provider secrets you actually use.
+
+## Clerk Setup
+
+Create a Clerk app with email-code authentication and no password requirement. Configure the publishable key in `wrangler.jsonc` and the secret key through Wrangler.
+
+The onboarding flow is:
+
+1. Existing registered users can sign in at `/join` with a one-time email PIN.
+2. New users must arrive with `/join?code=<INVITE_CODE>`.
+3. Approved users are stored in KV under `wc26:approved:<email>` and mirrored into D1 `users`.
+4. The configured `ADMIN_EMAIL` gets access to `/admin` and admin-only refresh controls.
+
+## Data And Jobs
+
+| Job | Route | Trigger |
+| --- | --- | --- |
+| Match ingestion | `/api/cron/ingest-matches` | Scheduled every 30 minutes |
+| Odds refresh | `/api/cron/refresh-odds` | Scheduled daily |
+| Squad refresh | `/api/admin/refresh-squads` | Admin/manual and scheduled daily |
+| Score recompute | `/api/admin/recompute` | Admin/manual |
+| Fixture discovery/import | `/api/admin/discover-fixtures`, `/api/admin/import-fixtures` | Admin/manual |
+| Qualification stats refresh | `/api/admin/refresh-qualification-stats` | Admin/manual |
+
+Admin routes require the configured admin user. Cron-capable routes can also authenticate with `x-cron-secret: <CRON_SECRET>`.
 
 ## Deploy
 
-### 0) Prereqs you need to gather before first deploy
+```bash
+npm run deploy
+```
 
-| Prereq | What | Where |
-|---|---|---|
-| Cloudflare account login | Authenticate wrangler | `wrangler login` |
-| Cloudflare account ID | (auto-detected after login) | `wrangler whoami` |
-| **api-sports.io key** | `x-apisports-key` for match data | https://dashboard.api-football.com → free tier |
-| **The Odds API key** | For the `/odds` page | https://the-odds-api.com → free tier |
-| **CRON_SECRET** | Any 32+ char random string | `openssl rand -hex 32` |
-| Allowlist of ~50 emails | Group members | Paste into CF Access policy step |
+The deploy script:
 
-### 1) Provision Cloudflare resources
+1. Builds the OpenNext Cloudflare bundle.
+2. Patches the generated Worker with the scheduled-handler mapping in `scripts/patch-worker-scheduled.mjs`.
+3. Deploys with Wrangler.
+
+For a build-only check:
 
 ```bash
-# Create D1 (paste the id into wrangler.jsonc → d1_databases[0].database_id)
-wrangler d1 create wc2026
-
-# (Optional) Create a fresh KV namespace instead of reusing wc2026_worker's:
-#   wrangler kv namespace create wc2026-cache
-# then paste the id into wrangler.jsonc → kv_namespaces[0].id
-
-# Apply schema to remote D1
-npm run db:apply:remote
+npm run build
 ```
 
-### 2) Set secrets
+For a type check:
 
 ```bash
-wrangler secret put API_SPORTS_KEY     # paste your api-sports.io key
-wrangler secret put ODDS_API_KEY       # paste your The Odds API key
-wrangler secret put CRON_SECRET        # paste output of: openssl rand -hex 32
+npx tsc --noEmit
 ```
 
-### 3) Deploy the worker
+## Project Map
 
-```bash
-npm run deploy                          # opennextjs-cloudflare build && deploy
-```
-
-First deploy outputs the worker URL — `https://wc2026.<your-subdomain>.workers.dev`. Note this for the next step.
-
-### 4) Put Cloudflare Access in front (auth)
-
-In the Cloudflare Zero Trust dashboard:
-
-1. **Access → Applications → Add application → Self-hosted**
-2. **Domain:** `wc2026.<your-subdomain>.workers.dev`
-3. **Identity provider:** One-Time PIN (built-in, free)
-4. **Policies → Add a policy:**
-   - Action: **Allow**
-   - Include: **Emails** — paste the 50 group emails (or use a comma-separated list / external list)
-5. **Save**
-6. (Optional) Session duration: **30 days**
-
-The worker is now gated. Every authenticated request includes `cf-access-authenticated-user-email`, which the app reads from `src/lib/auth.ts`.
-
-### 5) Replace the old wc2026-squads worker with a redirect
-
-Edit `wc2026_worker/worker.js` (the sibling project) to a 4-line redirect, or deploy a new tiny worker named `wc2026-squads` whose only behavior is `return Response.redirect("https://wc2026.<sub>.workers.dev/teams", 301)`.
-
-## Architecture cheat-sheet
-
-```
+```text
 src/
-├ app/
-│  ├ layout.tsx                Fonts, top nav, theme
-│  ├ page.tsx                  Dashboard
-│  ├ picks/                    Tournament-level pick UI
-│  ├ picks/lineup/[round]/     Per-round lineup builder
-│  ├ leaderboard/              Standings
-│  ├ users/[email]/            Public roster view
-│  ├ teams/                    Squad tracker (migrated from wc2026_worker)
-│  ├ odds/                     Three odds markets
-│  └ api/
-│     ├ picks/                 Pick upsert/list
-│     ├ admin/recompute/       Force re-score (admin email only)
-│     └ cron/
-│        ├ ingest-matches/     Pull finished fixtures, re-score
-│        └ refresh-odds/       Daily odds pull
-├ db/
-│  ├ schema.ts                 Drizzle ORM schema
-│  ├ client.ts                 D1 client getter
-│  └ migrations/               Auto-generated SQL
-└ lib/
-   ├ auth.ts                   CF Access header parsing, lazy user creation
-   ├ locks.ts                  Pick-lock policy (single source of truth)
-   ├ scoring/                  rules.ts + compute.ts + apply.ts
-   ├ api-sports/               Thin api-sports.io client
-   └ odds/                     Thin The Odds API client
+  app/
+    (app)/                  Protected app routes
+    api/admin/              Admin-only maintenance APIs
+    api/cron/               Scheduled ingestion APIs
+    join/                   Email PIN and invite flow
+  components/               Shared UI and pick sections
+  db/                       Drizzle schema, client, migrations
+  lib/
+    auth.ts                 Clerk/D1/KV access helpers
+    access.ts               Invite approval status
+    locks.ts                Pick lock policy
+    scoring/                Rules, pure compute, D1 apply layer
+    fotmob/                 Fixture and match-stat ingestion
+    odds/                   Odds refresh and pick suggestions
+    squads/                 Squad tracker refresh/load logic
+    qualification-stats.ts  Stats payload handling
 ```
 
-## Status (Day 1–2, 2026-05-19)
+## Notes For Maintainers
 
-| Block | State |
-|---|---|
-| Day 1–2 Scaffold + adapter + theme + auth + stubs | ✅ done |
-| Day 3 Seed teams + matches | _next_ |
-| Day 4–5 Port squad tracker | pending |
-| Day 6–8 Pick UI | pending |
-| Day 9–11 Scoring engine + ingestion | pending |
-| Day 12–13 Lineup builder | pending |
-| Day 14–15 Public roster + polish | pending |
-| Day 16–17 Odds page | pending |
-| Day 18–19 E2E test | pending |
-| **Ship deadline: Jun 9** | |
+- Use `rg`/`rg --files` to inspect code quickly.
+- Keep manual refresh controls admin-only.
+- When using Wrangler KV commands against production, pass `--remote`; binding commands default to local state.
+- After schema edits, generate and apply a migration before deploying.
+- After scoring or lock-rule edits, run `npx tsc --noEmit` and `npm run build`.

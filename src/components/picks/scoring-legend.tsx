@@ -1,5 +1,5 @@
 /**
- * Collapsible scoring legend shown on /picks (all 4 sections) and on each
+ * Collapsible scoring legend shown on /picks and on each
  * /picks/lineup/[round] page. Values pulled live from RULES so the legend
  * can never drift from actual scoring.
  */
